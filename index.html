@@ -1,1 +1,82 @@
-
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>입체도형 이미지 분류기</title>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest/dist/tf.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@teachablemachine/image@latest/dist/teachablemachine-image.min.js"></script>
+  <style>
+    :root { --bg:#f4f7fb; --card:rgba(255,255,255,.92); --text:#172033; --muted:#68738a; --primary:#5b5ce2; --primary-dark:#4142ba; --border:#e6eaf2; --shadow:0 20px 50px rgba(38,49,93,.12); }
+    * { box-sizing:border-box; }
+    body { margin:0; min-width:320px; min-height:100vh; font-family:Inter,Pretendard,"Noto Sans KR",system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; color:var(--text); background:radial-gradient(circle at top left,#e8e9ff 0,transparent 34%),var(--bg); }
+    .app { width:min(100% - 32px,960px); margin:0 auto; padding:32px 0 48px; }
+    header { text-align:center; margin-bottom:24px; }
+    .eyebrow { display:inline-block; margin-bottom:10px; padding:6px 12px; border-radius:999px; color:var(--primary-dark); background:#e9e9ff; font-size:.78rem; font-weight:800; letter-spacing:.08em; }
+    h1 { margin:0; font-size:clamp(1.8rem,5vw,3rem); line-height:1.15; }
+    .subtitle { margin:12px auto 0; max-width:620px; color:var(--muted); font-size:1rem; }
+    .panel { overflow:hidden; border:1px solid rgba(255,255,255,.8); border-radius:28px; background:var(--card); box-shadow:var(--shadow); backdrop-filter:blur(12px); }
+    .camera-area { padding:clamp(16px,4vw,32px); }
+    .camera-frame { position:relative; display:grid; place-items:center; min-height:280px; overflow:hidden; border-radius:20px; background:#111827; aspect-ratio:4 / 3; }
+    #webcam-container { display:grid; place-items:center; width:100%; height:100%; }
+    #webcam-container canvas { display:block; width:100%; height:100%; object-fit:cover; }
+    .camera-placeholder { padding:24px; color:#dbe4ff; text-align:center; }
+    .camera-placeholder strong { display:block; margin-bottom:8px; font-size:1.1rem; }
+    .controls { display:flex; justify-content:center; margin-top:18px; }
+    button { border:0; border-radius:14px; padding:13px 22px; color:#fff; background:linear-gradient(135deg,var(--primary),#7c5cff); box-shadow:0 10px 20px rgba(91,92,226,.25); font:inherit; font-weight:800; cursor:pointer; transition:transform .2s,box-shadow .2s,opacity .2s; }
+    button:hover { transform:translateY(-2px); box-shadow:0 14px 24px rgba(91,92,226,.3); }
+    button:disabled { cursor:wait; opacity:.65; transform:none; }
+    .status { min-height:24px; margin:14px 0 0; color:var(--muted); text-align:center; font-size:.9rem; }
+    .status.error { color:#c0394b; font-weight:700; }
+    .result-card { padding:clamp(20px,4vw,34px); border-top:1px solid var(--border); }
+    .prediction { display:flex; flex-wrap:wrap; align-items:baseline; justify-content:center; gap:10px 16px; margin-bottom:24px; text-align:center; }
+    .prediction-label { color:var(--muted); font-size:clamp(1rem,3vw,1.25rem); font-weight:700; }
+    #top-label { color:var(--primary-dark); font-size:clamp(2rem,8vw,4rem); font-weight:900; letter-spacing:-.05em; }
+    #top-probability { font-size:clamp(1.6rem,6vw,3rem); font-weight:900; }
+    .probabilities { display:grid; grid-template-columns:repeat(3,1fr); gap:14px; }
+    .probability-item { padding:16px; border:1px solid var(--border); border-radius:16px; background:#fbfcff; }
+    .probability-header { display:flex; justify-content:space-between; gap:8px; margin-bottom:10px; font-weight:800; }
+    .probability-value { color:var(--primary-dark); }
+    .bar { height:9px; overflow:hidden; border-radius:999px; background:#e9ecf5; }
+    .bar-fill { width:0; height:100%; border-radius:inherit; background:linear-gradient(90deg,#6968f0,#9a73ff); transition:width .25s ease; }
+    footer { margin-top:18px; color:var(--muted); text-align:center; font-size:.8rem; }
+    @media (max-width:640px) { .app { width:min(100% - 20px,960px); padding-top:20px; } .panel { border-radius:22px; } .camera-frame { border-radius:16px; min-height:220px; } .probabilities { grid-template-columns:1fr; gap:10px; } .probability-item { padding:13px 15px; } }
+  </style>
+</head>
+<body>
+  <main class="app">
+    <header>
+      <span class="eyebrow">TEACHABLE MACHINE · LIVE AI</span>
+      <h1>입체도형 이미지 분류기</h1>
+      <p class="subtitle">카메라에 원기둥, 원뿔 또는 구를 비춰 보세요.</p>
+    </header>
+    <section class="panel">
+      <div class="camera-area">
+        <div class="camera-frame"><div id="webcam-container"><div class="camera-placeholder" id="placeholder"><strong>카메라를 시작해 주세요</strong>아래 버튼을 누르면 실시간 분류가 시작됩니다.</div></div></div>
+        <div class="controls"><button id="start-button" type="button">카메라 시작</button></div>
+        <p class="status" id="status" aria-live="polite">모델을 준비하고 있습니다.</p>
+      </div>
+      <div class="result-card">
+        <div class="prediction" aria-live="polite"><span class="prediction-label">현재 인식 결과</span><strong id="top-label">대기 중</strong><strong id="top-probability">--%</strong></div>
+        <div class="probabilities" id="probabilities"></div>
+      </div>
+    </section>
+    <footer>카메라 영상과 예측은 이 브라우저에서만 처리됩니다.</footer>
+  </main>
+  <script>
+    const MODEL_URL="https://teachablemachine.withgoogle.com/models/q3uuf66Pv/";
+    const CLASS_NAMES=["원기둥","원뿔","구"];
+    const LABEL_ALIASES={"원기둥":"원기둥",cylinder:"원기둥",cylinders:"원기둥","원뿔":"원뿔",cone:"원뿔",cones:"원뿔","구":"구",sphere:"구",spheres:"구",ball:"구"};
+    let model,webcam,animationId,isRunning=false;
+    const $=id=>document.getElementById(id), startButton=$("start-button"), status=$("status"), placeholder=$("placeholder"), webcamContainer=$("webcam-container"), topLabel=$("top-label"), topProbability=$("top-probability"), probabilities=$("probabilities");
+    function normalizeLabel(label){const key=String(label).trim().toLowerCase();return LABEL_ALIASES[key]||CLASS_NAMES.find(name=>key.includes(name))||label;}
+    function setStatus(message,isError=false){status.textContent=message;status.classList.toggle("error",isError);}
+    function createProbabilityCards(labels){const classLabels=labels.length?labels:CLASS_NAMES;probabilities.innerHTML=classLabels.map((label,index)=>`<div class="probability-item"><div class="probability-header"><span>${normalizeLabel(label)}</span><span class="probability-value" id="probability-${index}">0.0%</span></div><div class="bar"><div class="bar-fill" id="bar-${index}"></div></div></div>`).join("");}
+    async function loadModel(){try{setStatus("AI 모델을 불러오는 중입니다...");model=await tmImage.load(`${MODEL_URL}model.json`,`${MODEL_URL}metadata.json`);createProbabilityCards(model.getClassLabels());setStatus("준비되었습니다. 카메라 시작 버튼을 눌러 주세요.");}catch(error){console.error(error);setStatus("모델을 불러오지 못했습니다. 인터넷 연결을 확인해 주세요.",true);startButton.disabled=true;}}
+    async function startCamera(){if(!model||isRunning)return;try{startButton.disabled=true;setStatus("카메라 권한을 기다리는 중입니다...");const flip=window.innerWidth<700;webcam=new tmImage.Webcam(720,540,flip);await webcam.setup({facingMode:"environment"});await webcam.play();placeholder.remove();webcamContainer.prepend(webcam.canvas);isRunning=true;startButton.textContent="카메라 실행 중";setStatus("카메라가 실행 중입니다. 물체를 화면 중앙에 비춰 주세요.");animationId=window.requestAnimationFrame(loop);}catch(error){console.error(error);startButton.disabled=false;setStatus("카메라를 시작할 수 없습니다. 브라우저의 카메라 권한과 HTTPS 연결을 확인해 주세요.",true);}}
+    async function loop(){if(!isRunning)return;webcam.update();await predict();animationId=window.requestAnimationFrame(loop);}
+    async function predict(){const predictions=await model.predict(webcam.canvas),sorted=[...predictions].sort((a,b)=>b.probability-a.probability),best=sorted[0];topLabel.textContent=normalizeLabel(best.className);topProbability.textContent=`${(best.probability*100).toFixed(1)}%`;predictions.forEach((prediction,index)=>{const percent=prediction.probability*100,value=$(`probability-${index}`),bar=$(`bar-${index}`);if(value)value.textContent=`${percent.toFixed(1)}%`;if(bar)bar.style.width=`${percent}%`;});}
+    startButton.addEventListener("click",startCamera);window.addEventListener("beforeunload",()=>{if(animationId)cancelAnimationFrame(animationId);if(webcam)webcam.stop();});loadModel();
+  </script>
+</body>
+</html>
