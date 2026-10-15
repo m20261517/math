@@ -19,14 +19,15 @@
     .camera-area { padding:clamp(16px,4vw,32px); }
     .camera-frame { position:relative; display:grid; place-items:center; min-height:280px; overflow:hidden; border-radius:20px; background:#111827; aspect-ratio:4 / 3; }
     #webcam-container { display:grid; place-items:center; width:100%; height:100%; }
-    /* 카메라 영상을 절대 좌우 반전하지 않습니다. */
     #webcam-container canvas { display:block; width:100%; height:100%; object-fit:cover; transform:none !important; }
     .camera-placeholder { padding:24px; color:#dbe4ff; text-align:center; line-height:1.6; }
     .camera-placeholder strong { display:block; margin-bottom:8px; font-size:1.1rem; }
-    .controls { display:flex; justify-content:center; margin-top:18px; }
+    .controls { display:flex; flex-wrap:wrap; justify-content:center; gap:10px; margin-top:18px; }
     button { border:0; border-radius:14px; padding:13px 22px; color:#fff; background:linear-gradient(135deg,var(--primary),#7c5cff); box-shadow:0 10px 20px rgba(91,92,226,.25); font:inherit; font-weight:800; cursor:pointer; transition:transform .2s,box-shadow .2s,opacity .2s; }
     button:hover { transform:translateY(-2px); box-shadow:0 14px 24px rgba(91,92,226,.3); }
     button:disabled { cursor:wait; opacity:.65; transform:none; }
+    #flip-button { color:var(--primary-dark); background:#eef0ff; box-shadow:none; }
+    #flip-button:hover { box-shadow:0 8px 18px rgba(91,92,226,.15); }
     .status { min-height:24px; margin:14px 0 0; color:var(--muted); text-align:center; font-size:.9rem; line-height:1.5; }
     .status.error { color:#c0394b; font-weight:700; }
     .result-card { padding:clamp(20px,4vw,34px); border-top:1px solid var(--border); }
@@ -41,7 +42,7 @@
     .bar { height:9px; overflow:hidden; border-radius:999px; background:#e9ecf5; }
     .bar-fill { width:0; height:100%; border-radius:inherit; background:linear-gradient(90deg,#6968f0,#9a73ff); transition:width .25s ease; }
     footer { margin-top:18px; color:var(--muted); text-align:center; font-size:.8rem; line-height:1.5; }
-    @media (max-width:640px) { .app { width:min(100% - 20px,960px); padding-top:20px; } .panel { border-radius:22px; } .camera-frame { border-radius:16px; min-height:220px; } .probabilities { grid-template-columns:1fr; gap:10px; } .probability-item { padding:13px 15px; } }
+    @media (max-width:640px) { .app { width:min(100% - 20px,960px); padding-top:20px; } .panel { border-radius:22px; } .camera-frame { border-radius:16px; min-height:220px; } .probabilities { grid-template-columns:1fr; gap:10px; } .probability-item { padding:13px 15px; } .controls button { width:100%; max-width:320px; } }
   </style>
 </head>
 <body>
@@ -61,7 +62,10 @@
             </div>
           </div>
         </div>
-        <div class="controls"><button id="start-button" type="button">카메라 시작</button></div>
+        <div class="controls">
+          <button id="start-button" type="button">카메라 시작</button>
+          <button id="flip-button" type="button" disabled>좌우 반전: 끔</button>
+        </div>
         <p class="status" id="status" aria-live="polite">AI 모델을 준비하고 있습니다.</p>
       </div>
       <div class="result-card">
@@ -78,6 +82,7 @@
     let model, webcam, animationId, isRunning = false;
     const $ = (id) => document.getElementById(id);
     const startButton = $("start-button");
+    const flipButton = $("flip-button");
     const status = $("status");
     const placeholder = $("placeholder");
     const webcamContainer = $("webcam-container");
@@ -126,19 +131,15 @@
       try {
         startButton.disabled = true;
         setStatus("카메라 권한을 기다리는 중입니다...");
-
-        // 세 번째 인자를 false로 지정해 Teachable Machine의 좌우 반전을 끕니다.
         webcam = new tmImage.Webcam(720, 540, false);
         await webcam.setup({ facingMode: "environment" });
         await webcam.play();
-
-        // 혹시 다른 스타일이 적용되어도 캔버스가 반전되지 않도록 명시합니다.
         webcam.canvas.style.transform = "none";
         webcam.canvas.style.webkitTransform = "none";
-
         placeholder.remove();
         webcamContainer.prepend(webcam.canvas);
         isRunning = true;
+        flipButton.disabled = false;
         startButton.textContent = "카메라 실행 중";
         setStatus("카메라가 실행 중입니다. 도형을 화면 중앙에 비춰 주세요.");
         animationId = window.requestAnimationFrame(loop);
@@ -147,6 +148,13 @@
         startButton.disabled = false;
         setStatus("카메라를 시작할 수 없습니다. 카메라 권한과 HTTPS 연결을 확인해 주세요.", true);
       }
+    }
+
+    function toggleFlip() {
+      if (!webcam || !isRunning) return;
+      webcam.flip = !webcam.flip;
+      flipButton.textContent = `좌우 반전: ${webcam.flip ? "켬" : "끔"}`;
+      setStatus(`카메라 좌우 반전이 ${webcam.flip ? "켜졌습니다" : "꺼졌습니다"}.`);
     }
 
     async function loop() {
@@ -162,7 +170,6 @@
       const best = sorted[0];
       topLabel.textContent = normalizeLabel(best.className);
       topProbability.textContent = `${(best.probability * 100).toFixed(1)}%`;
-
       predictions.forEach((prediction, index) => {
         const percent = prediction.probability * 100;
         const value = $(`probability-${index}`);
@@ -173,6 +180,7 @@
     }
 
     startButton.addEventListener("click", startCamera);
+    flipButton.addEventListener("click", toggleFlip);
     window.addEventListener("beforeunload", () => {
       if (animationId) cancelAnimationFrame(animationId);
       if (webcam) webcam.stop();
