@@ -19,7 +19,8 @@
     .camera-area { padding:clamp(16px,4vw,32px); }
     .camera-frame { position:relative; display:grid; place-items:center; min-height:280px; overflow:hidden; border-radius:20px; background:#111827; aspect-ratio:4 / 3; }
     #webcam-container { display:grid; place-items:center; width:100%; height:100%; }
-    #webcam-container canvas { display:block; width:100%; height:100%; object-fit:cover; }
+    /* 카메라 영상을 절대 좌우 반전하지 않습니다. */
+    #webcam-container canvas { display:block; width:100%; height:100%; object-fit:cover; transform:none !important; }
     .camera-placeholder { padding:24px; color:#dbe4ff; text-align:center; line-height:1.6; }
     .camera-placeholder strong { display:block; margin-bottom:8px; font-size:1.1rem; }
     .controls { display:flex; justify-content:center; margin-top:18px; }
@@ -52,7 +53,14 @@
     </header>
     <section class="panel">
       <div class="camera-area">
-        <div class="camera-frame"><div id="webcam-container"><div class="camera-placeholder" id="placeholder"><strong>카메라를 시작해 주세요</strong>아래 버튼을 누르면 도형 분류가 시작됩니다.</div></div></div>
+        <div class="camera-frame">
+          <div id="webcam-container">
+            <div class="camera-placeholder" id="placeholder">
+              <strong>카메라를 시작해 주세요</strong>
+              아래 버튼을 누르면 도형 분류가 시작됩니다.
+            </div>
+          </div>
+        </div>
         <div class="controls"><button id="start-button" type="button">카메라 시작</button></div>
         <p class="status" id="status" aria-live="polite">AI 모델을 준비하고 있습니다.</p>
       </div>
@@ -64,30 +72,112 @@
     <footer>카메라 영상과 예측은 이 브라우저에서만 처리됩니다.</footer>
   </main>
   <script>
-    const MODEL_URL="https://teachablemachine.withgoogle.com/models/q3uuf66Pv/";
-    const CLASS_NAMES=["원기둥","원뿔","구"];
-    const LABEL_ALIASES={"원기둥":"원기둥",cylinder:"원기둥",cylinders:"원기둥","원뿔":"원뿔",cone:"원뿔",cones:"원뿔","구":"구",sphere:"구",spheres:"구",ball:"구"};
-    let model,webcam,animationId,isRunning=false;
-    const $=id=>document.getElementById(id), startButton=$("start-button"), status=$("status"), placeholder=$("placeholder"), webcamContainer=$("webcam-container"), topLabel=$("top-label"), topProbability=$("top-probability"), probabilities=$("probabilities");
-    function normalizeLabel(label){const key=String(label).trim().toLowerCase();return LABEL_ALIASES[key]||CLASS_NAMES.find(name=>key.includes(name))||label;}
-    function setStatus(message,isError=false){status.textContent=message;status.classList.toggle("error",isError);}
-    function createProbabilityCards(labels){const classLabels=labels.length?labels:CLASS_NAMES;probabilities.innerHTML=classLabels.map((label,index)=>`<div class="probability-item"><div class="probability-header"><span>${normalizeLabel(label)}</span><span class="probability-value" id="probability-${index}">0.0%</span></div><div class="bar"><div class="bar-fill" id="bar-${index}"></div></div></div>`).join("");}
-    async function loadModel(){try{setStatus("AI 모델을 불러오는 중입니다...");model=await tmImage.load(`${MODEL_URL}model.json`,`${MODEL_URL}metadata.json`);createProbabilityCards(model.getClassLabels());setStatus("준비되었습니다. 카메라 시작 버튼을 눌러 주세요.");}catch(error){console.error(error);setStatus("모델을 불러오지 못했습니다. 인터넷 연결을 확인해 주세요.",true);startButton.disabled=true;}}
-    async function startCamera(){if(!model||isRunning)return;try{startButton.disabled=true;setStatus("카메라 권한을 기다리는 중입니다...");
-      // flip=false로 설정하여 카메라 화면이 좌우 반전되지 않도록 합니다.
-      webcam=new tmImage.Webcam(720,540,false);
-      await webcam.setup({facingMode:"environment"});
-      await webcam.play();
-      placeholder.remove();
-      webcamContainer.prepend(webcam.canvas);
-      isRunning=true;
-      startButton.textContent="카메라 실행 중";
-      setStatus("카메라가 실행 중입니다. 도형을 화면 중앙에 비춰 주세요.");
-      animationId=window.requestAnimationFrame(loop);
-    }catch(error){console.error(error);startButton.disabled=false;setStatus("카메라를 시작할 수 없습니다. 브라우저의 카메라 권한과 HTTPS 연결을 확인해 주세요.",true);}}
-    async function loop(){if(!isRunning)return;webcam.update();await predict();animationId=window.requestAnimationFrame(loop);}
-    async function predict(){const predictions=await model.predict(webcam.canvas),sorted=[...predictions].sort((a,b)=>b.probability-a.probability),best=sorted[0];topLabel.textContent=normalizeLabel(best.className);topProbability.textContent=`${(best.probability*100).toFixed(1)}%`;predictions.forEach((prediction,index)=>{const percent=prediction.probability*100,value=$(`probability-${index}`),bar=$(`bar-${index}`);if(value)value.textContent=`${percent.toFixed(1)}%`;if(bar)bar.style.width=`${percent}%`;});}
-    startButton.addEventListener("click",startCamera);window.addEventListener("beforeunload",()=>{if(animationId)cancelAnimationFrame(animationId);if(webcam)webcam.stop();});loadModel();
+    const MODEL_URL = "https://teachablemachine.withgoogle.com/models/q3uuf66Pv/";
+    const CLASS_NAMES = ["원기둥", "원뿔", "구"];
+    const LABEL_ALIASES = { "원기둥":"원기둥", cylinder:"원기둥", cylinders:"원기둥", "원뿔":"원뿔", cone:"원뿔", cones:"원뿔", "구":"구", sphere:"구", spheres:"구", ball:"구" };
+    let model, webcam, animationId, isRunning = false;
+    const $ = (id) => document.getElementById(id);
+    const startButton = $("start-button");
+    const status = $("status");
+    const placeholder = $("placeholder");
+    const webcamContainer = $("webcam-container");
+    const topLabel = $("top-label");
+    const topProbability = $("top-probability");
+    const probabilities = $("probabilities");
+
+    function normalizeLabel(label) {
+      const key = String(label).trim().toLowerCase();
+      return LABEL_ALIASES[key] || CLASS_NAMES.find((name) => key.includes(name)) || label;
+    }
+
+    function setStatus(message, isError = false) {
+      status.textContent = message;
+      status.classList.toggle("error", isError);
+    }
+
+    function createProbabilityCards(labels) {
+      const classLabels = labels.length ? labels : CLASS_NAMES;
+      probabilities.innerHTML = classLabels.map((label, index) => `
+        <div class="probability-item">
+          <div class="probability-header">
+            <span>${normalizeLabel(label)}</span>
+            <span class="probability-value" id="probability-${index}">0.0%</span>
+          </div>
+          <div class="bar"><div class="bar-fill" id="bar-${index}"></div></div>
+        </div>
+      `).join("");
+    }
+
+    async function loadModel() {
+      try {
+        setStatus("AI 모델을 불러오는 중입니다...");
+        model = await tmImage.load(`${MODEL_URL}model.json`, `${MODEL_URL}metadata.json`);
+        createProbabilityCards(model.getClassLabels());
+        setStatus("준비되었습니다. 카메라 시작 버튼을 눌러 주세요.");
+      } catch (error) {
+        console.error(error);
+        setStatus("모델을 불러오지 못했습니다. 인터넷 연결을 확인해 주세요.", true);
+        startButton.disabled = true;
+      }
+    }
+
+    async function startCamera() {
+      if (!model || isRunning) return;
+      try {
+        startButton.disabled = true;
+        setStatus("카메라 권한을 기다리는 중입니다...");
+
+        // 세 번째 인자를 false로 지정해 Teachable Machine의 좌우 반전을 끕니다.
+        webcam = new tmImage.Webcam(720, 540, false);
+        await webcam.setup({ facingMode: "environment" });
+        await webcam.play();
+
+        // 혹시 다른 스타일이 적용되어도 캔버스가 반전되지 않도록 명시합니다.
+        webcam.canvas.style.transform = "none";
+        webcam.canvas.style.webkitTransform = "none";
+
+        placeholder.remove();
+        webcamContainer.prepend(webcam.canvas);
+        isRunning = true;
+        startButton.textContent = "카메라 실행 중";
+        setStatus("카메라가 실행 중입니다. 도형을 화면 중앙에 비춰 주세요.");
+        animationId = window.requestAnimationFrame(loop);
+      } catch (error) {
+        console.error(error);
+        startButton.disabled = false;
+        setStatus("카메라를 시작할 수 없습니다. 카메라 권한과 HTTPS 연결을 확인해 주세요.", true);
+      }
+    }
+
+    async function loop() {
+      if (!isRunning) return;
+      webcam.update();
+      await predict();
+      animationId = window.requestAnimationFrame(loop);
+    }
+
+    async function predict() {
+      const predictions = await model.predict(webcam.canvas);
+      const sorted = [...predictions].sort((a, b) => b.probability - a.probability);
+      const best = sorted[0];
+      topLabel.textContent = normalizeLabel(best.className);
+      topProbability.textContent = `${(best.probability * 100).toFixed(1)}%`;
+
+      predictions.forEach((prediction, index) => {
+        const percent = prediction.probability * 100;
+        const value = $(`probability-${index}`);
+        const bar = $(`bar-${index}`);
+        if (value) value.textContent = `${percent.toFixed(1)}%`;
+        if (bar) bar.style.width = `${percent}%`;
+      });
+    }
+
+    startButton.addEventListener("click", startCamera);
+    window.addEventListener("beforeunload", () => {
+      if (animationId) cancelAnimationFrame(animationId);
+      if (webcam) webcam.stop();
+    });
+    loadModel();
   </script>
 </body>
 </html>
