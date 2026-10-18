@@ -7,6 +7,7 @@
   <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest/dist/tf.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@teachablemachine/image@latest/dist/teachablemachine-image.min.js"></script>
   <style>
+    /* 화면 꾸미기: 배경색, 글자색 같은 기본 색을 한곳에서 정해요. */
     :root { --bg:#f4f7fb; --card:rgba(255,255,255,.92); --text:#172033; --muted:#68738a; --primary:#5b5ce2; --primary-dark:#4142ba; --border:#e6eaf2; --shadow:0 20px 50px rgba(38,49,93,.12); }
     * { box-sizing:border-box; }
     body { margin:0; min-width:320px; min-height:100vh; font-family:Inter,Pretendard,"Noto Sans KR",system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; color:var(--text); background:radial-gradient(circle at top left,#e8e9ff 0,transparent 34%),var(--bg); }
@@ -42,15 +43,17 @@
     .bar { height:9px; overflow:hidden; border-radius:999px; background:#e9ecf5; }
     .bar-fill { width:0; height:100%; border-radius:inherit; background:linear-gradient(90deg,#6968f0,#9a73ff); transition:width .25s ease; }
     footer { margin-top:18px; color:var(--muted); text-align:center; font-size:.8rem; line-height:1.5; }
+    /* 작은 화면(휴대폰)에서는 자동으로 보기 좋게 줄바꿈해요. */
     @media (max-width:640px) { .app { width:min(100% - 20px,960px); padding-top:20px; } .panel { border-radius:22px; } .camera-frame { border-radius:16px; min-height:220px; } .probabilities { grid-template-columns:1fr; gap:10px; } .probability-item { padding:13px 15px; } .controls button { width:100%; max-width:320px; } }
   </style>
 </head>
 <body>
   <main class="app">
+    <!-- 화면 구성: 제목과 안내 문구를 보여 주는 부분이에요. -->
     <header>
       <span class="eyebrow">초등학교 6학년 수학 · 6단원</span>
       <h1>원기둥 · 원뿔 · 구 구별하기</h1>
-      <p class="subtitle">카메라에 입체도형을 비춰 보세요.<br>AI가 원기둥, 원뿔, 구 중 어떤 도형인지 실시간으로 알려줍니다.</p>
+      <p class="subtitle">카메라에 입체도형을 비춰 보세요.<br>AI가 원기둥, 원뿔, 구 중 어떤 도형인지 실시간으로 알려줍니다.<br>사진은 외부 서버로 보내지 않고, 이 브라우저 안에서만 분석해요.</p>
     </header>
     <section class="panel">
       <div class="camera-area">
@@ -73,10 +76,13 @@
         <div class="probabilities" id="probabilities"></div>
       </div>
     </section>
-    <footer>카메라 영상과 예측은 이 브라우저에서만 처리됩니다.</footer>
+    <footer>카메라 영상과 예측은 이 브라우저에서만 처리됩니다. (모델 파일: model.json, metadata.json, 가중치 파일만 내려받아요.)</footer>
   </main>
   <script>
-    const MODEL_URL = "https://teachablemachine.withgoogle.com/models/q3uuf66Pv/";
+    // AI 모델 주소: 여기서 모델 설명 파일(model.json)과 학습 정보(metadata.json)만 받아와요.
+    const MODEL_URL = "https://teachablemachine.withgoogle.com/models/FqPNxW2We/";
+    // 70%보다 자신감이 낮으면 정답처럼 보이지 않게 "잘 모르겠어요"라고 보여줘요.
+    const CONFIDENCE_THRESHOLD = 0.7;
     const CLASS_NAMES = ["원기둥", "원뿔", "구"];
     const LABEL_ALIASES = { "원기둥":"원기둥", cylinder:"원기둥", cylinders:"원기둥", "원뿔":"원뿔", cone:"원뿔", cones:"원뿔", "구":"구", sphere:"구", spheres:"구", ball:"구" };
     let model, webcam, animationId, isRunning = false;
@@ -90,16 +96,19 @@
     const topProbability = $("top-probability");
     const probabilities = $("probabilities");
 
+    // 라벨 이름을 보기 쉬운 한국어로 맞춰요.
     function normalizeLabel(label) {
       const key = String(label).trim().toLowerCase();
       return LABEL_ALIASES[key] || CLASS_NAMES.find((name) => key.includes(name)) || label;
     }
 
+    // 아래 안내 문구를 바꾸고, 오류면 빨간색으로 보여줘요.
     function setStatus(message, isError = false) {
       status.textContent = message;
       status.classList.toggle("error", isError);
     }
 
+    // 각 도형의 확률을 카드와 막대로 보여줄 칸을 만들어요.
     function createProbabilityCards(labels) {
       const classLabels = labels.length ? labels : CLASS_NAMES;
       probabilities.innerHTML = classLabels.map((label, index) => `
@@ -113,6 +122,7 @@
       `).join("");
     }
 
+    // 모델 로드: 외부로 보내는 데이터는 없고, 모델 파일만 받아와요.
     async function loadModel() {
       try {
         setStatus("AI 모델을 불러오는 중입니다...");
@@ -126,6 +136,7 @@
       }
     }
 
+    // 카메라 시작: 버튼을 누르면 카메라를 켜고 예측을 반복해요.
     async function startCamera() {
       if (!model || isRunning) return;
       try {
@@ -150,6 +161,7 @@
       }
     }
 
+    // 좌우 반전: 거울처럼 좌우를 바꿔서 보기 쉽게 해요.
     function toggleFlip() {
       if (!webcam || !isRunning) return;
       webcam.flip = !webcam.flip;
@@ -157,6 +169,7 @@
       setStatus(`카메라 좌우 반전이 ${webcam.flip ? "켜졌습니다" : "꺼졌습니다"}.`);
     }
 
+    // 반복 실행: 매 프레임마다 카메라 화면을 업데이트하고 예측해요.
     async function loop() {
       if (!isRunning) return;
       webcam.update();
@@ -164,11 +177,13 @@
       animationId = window.requestAnimationFrame(loop);
     }
 
+    // 예측: 카메라 이미지를 이 브라우저 안에서만 계산해요(외부 전송 없음).
     async function predict() {
       const predictions = await model.predict(webcam.canvas);
       const sorted = [...predictions].sort((a, b) => b.probability - a.probability);
       const best = sorted[0];
-      topLabel.textContent = normalizeLabel(best.className);
+      // 70% 미만 처리: 확신이 낮으면 정답처럼 보이지 않게 "잘 모르겠어요"를 표시해요.
+      topLabel.textContent = best.probability < CONFIDENCE_THRESHOLD ? "잘 모르겠어요" : normalizeLabel(best.className);
       topProbability.textContent = `${(best.probability * 100).toFixed(1)}%`;
       predictions.forEach((prediction, index) => {
         const percent = prediction.probability * 100;
@@ -181,6 +196,7 @@
 
     startButton.addEventListener("click", startCamera);
     flipButton.addEventListener("click", toggleFlip);
+    // 종료 시 정리: 페이지를 떠날 때 카메라와 반복 실행을 멈춰요.
     window.addEventListener("beforeunload", () => {
       if (animationId) cancelAnimationFrame(animationId);
       if (webcam) webcam.stop();
