@@ -1,0 +1,255 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>교사용 평가 화면 | 원기둥·원뿔·구</title>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest/dist/tf.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@teachablemachine/image@latest/dist/teachablemachine-image.min.js"></script>
+  <style>
+    :root { --bg:#f4f7fb; --card:#fff; --text:#172033; --muted:#68738a; --primary:#5b5ce2; --danger:#c0394b; --border:#e6eaf2; }
+    * { box-sizing:border-box; }
+    body { margin:0; min-width:320px; color:var(--text); background:linear-gradient(135deg,#f5f7ff,#eef8f7); font-family:Inter,Pretendard,"Noto Sans KR",system-ui,sans-serif; }
+    .app { width:min(100% - 24px,1200px); margin:0 auto; padding:28px 0 48px; }
+    header { margin-bottom:22px; text-align:center; }
+    .eyebrow { display:inline-block; padding:6px 12px; border-radius:999px; color:#4142ba; background:#e9e9ff; font-size:.8rem; font-weight:800; }
+    h1 { margin:12px 0 8px; font-size:clamp(1.8rem,5vw,3rem); }
+    .subtitle { margin:0 auto; max-width:760px; color:var(--muted); line-height:1.6; }
+    .card { margin-top:18px; padding:clamp(18px,3vw,30px); border:1px solid rgba(255,255,255,.8); border-radius:24px; background:rgba(255,255,255,.94); box-shadow:0 18px 45px rgba(38,49,93,.1); }
+    .toolbar { display:flex; flex-wrap:wrap; align-items:center; gap:10px; }
+    button, .file-label { border:0; border-radius:12px; padding:12px 16px; color:#fff; background:linear-gradient(135deg,var(--primary),#7c5cff); font:inherit; font-weight:800; cursor:pointer; }
+    button:disabled { cursor:wait; opacity:.55; }
+    .file-label { background:linear-gradient(135deg,#16a085,#27ae60); }
+    .secondary { color:#4142ba; background:#eef0ff; }
+    .danger { background:#fff0f2; color:var(--danger); }
+    #file-input { position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0,0,0,0); }
+    .status { min-height:24px; margin:14px 0 0; color:var(--muted); line-height:1.5; }
+    .status.error { color:var(--danger); font-weight:700; }
+    .summary { display:grid; grid-template-columns:repeat(3,1fr); gap:12px; margin-top:20px; }
+    .stat { padding:16px; border:1px solid var(--border); border-radius:16px; background:#fbfcff; text-align:center; }
+    .stat strong { display:block; margin-top:5px; font-size:1.7rem; }
+    .table-wrap { overflow-x:auto; margin-top:18px; }
+    table { width:100%; min-width:560px; border-collapse:collapse; }
+    th, td { padding:11px 10px; border:1px solid var(--border); text-align:center; white-space:nowrap; }
+    th { background:#f0f1ff; }
+    caption { margin-bottom:10px; text-align:left; font-size:1.15rem; font-weight:900; }
+    .accuracy-list { display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:10px; margin-top:18px; }
+    .accuracy-item { padding:14px; border:1px solid var(--border); border-radius:14px; background:#fbfcff; }
+    .accuracy-item strong { display:block; margin-top:5px; color:#4142ba; font-size:1.3rem; }
+    .wrong-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(180px,1fr)); gap:14px; margin-top:18px; }
+    .wrong-item { overflow:hidden; border:1px solid #ffd4d9; border-radius:14px; background:#fff8f8; }
+    .wrong-item img { display:block; width:100%; height:130px; object-fit:cover; background:#eee; }
+    .wrong-item p { margin:0; padding:10px; font-size:.88rem; line-height:1.5; }
+    .empty { color:var(--muted); }
+    footer { margin-top:18px; color:var(--muted); text-align:center; font-size:.82rem; line-height:1.5; }
+    @media (max-width:640px) { .summary { grid-template-columns:1fr; } .toolbar button,.toolbar .file-label { flex:1 1 140px; text-align:center; } }
+  </style>
+</head>
+<body>
+  <main class="app">
+    <header>
+      <span class="eyebrow">교사용 평가 도구</span>
+      <h1>원기둥 · 원뿔 · 구 분류 평가</h1>
+      <p class="subtitle">여러 사진을 한 번에 선택하면 브라우저에서만 분석합니다.<br>파일 이름의 밑줄(<code>_</code>) 앞부분을 실제 클래스로 사용합니다. 예: <b>can_01.jpg</b> → <b>can</b></p>
+    </header>
+
+    <section class="card">
+      <div class="toolbar" aria-label="평가 조작 버튼">
+        <label class="file-label" for="file-input">평가 사진 여러 장 선택</label>
+        <input id="file-input" type="file" accept="image/*" multiple />
+        <button id="download-button" type="button" class="secondary" disabled>CSV 다운로드</button>
+        <button id="clear-button" type="button" class="danger" disabled>결과 지우기</button>
+      </div>
+      <p id="status" class="status" aria-live="polite">AI 모델을 준비하고 있습니다.</p>
+      <div class="summary" aria-live="polite">
+        <div class="stat">전체 사진<strong id="total-count">0</strong></div>
+        <div class="stat">정분류<strong id="correct-count">0</strong></div>
+        <div class="stat">전체 정분류율<strong id="overall-accuracy">-</strong></div>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="table-wrap">
+        <table id="matrix-table">
+          <caption>혼동행렬 <small>(행: 실제 클래스 / 열: 예측 클래스)</small></caption>
+          <thead></thead><tbody></tbody>
+        </table>
+      </div>
+      <h2>클래스별 정분류율</h2>
+      <div id="accuracy-list" class="accuracy-list"><p class="empty">사진을 선택하면 클래스별 결과가 표시됩니다.</p></div>
+    </section>
+
+    <section class="card">
+      <h2>틀린 사진 모음</h2>
+      <div id="wrong-grid" class="wrong-grid"><p class="empty">현재 틀린 사진이 없습니다.</p></div>
+    </section>
+
+    <footer>모델 파일(model.json, metadata.json)과 사진 분석은 이 브라우저 안에서만 처리됩니다.</footer>
+  </main>
+
+  <script>
+    // 같은 폴더의 Teachable Machine 모델 파일을 불러옵니다.
+    const MODEL_URL = "./";
+    const CONFIDENCE_THRESHOLD = 0.7;
+    const fileInput = document.getElementById("file-input");
+    const downloadButton = document.getElementById("download-button");
+    const clearButton = document.getElementById("clear-button");
+    const status = document.getElementById("status");
+    const results = [];
+    let model;
+
+    // 모델 클래스 이름의 표기 차이를 줄여 실제 클래스와 비교합니다.
+    function normalizeLabel(label) {
+      const key = String(label || "").trim().toLowerCase();
+      const aliases = {
+        cylinder: "cylinder", cylinders: "cylinder", 원기둥: "cylinder",
+        cone: "cone", cones: "cone", 원뿔: "cone",
+        sphere: "sphere", spheres: "sphere", ball: "sphere", 구: "sphere"
+      };
+      return aliases[key] || key;
+    }
+
+    function setStatus(message, isError = false) {
+      status.textContent = message;
+      status.classList.toggle("error", isError);
+    }
+
+    // 이미지 파일을 브라우저 메모리에서 읽어 img 요소로 만듭니다.
+    function loadImage(file) {
+      return new Promise((resolve, reject) => {
+        const image = new Image();
+        const url = URL.createObjectURL(file);
+        image.onload = () => { URL.revokeObjectURL(url); resolve(image); };
+        image.onerror = () => { URL.revokeObjectURL(url); reject(new Error("이미지를 읽을 수 없습니다.")); };
+        image.src = url;
+      });
+    }
+
+    // 틀린 사진을 결과 화면에 표시하기 위해 data URL로 변환합니다.
+    function fileToDataUrl(file) {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result);
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+    }
+
+    // 파일 이름의 밑줄 앞부분을 실제 정답 클래스로 사용합니다.
+    function getActualClass(fileName) {
+      return fileName.split("_")[0].trim() || fileName.replace(/\.[^.]+$/, "");
+    }
+
+    async function loadModel() {
+      try {
+        // model.json과 metadata.json은 eval.html과 같은 폴더에 있어야 합니다.
+        model = await tmImage.load(`${MODEL_URL}model.json`, `${MODEL_URL}metadata.json`);
+        setStatus(`모델 준비 완료. 클래스 ${model.getClassLabels().length}개를 사용합니다. 사진을 선택해 주세요.`);
+      } catch (error) {
+        console.error(error);
+        setStatus("모델을 불러오지 못했습니다. eval.html과 model.json, metadata.json의 위치를 확인해 주세요.", true);
+        fileInput.disabled = true;
+      }
+    }
+
+    async function evaluateFiles(files) {
+      if (!model || !files.length) return;
+      results.length = 0;
+      downloadButton.disabled = true;
+      clearButton.disabled = true;
+      fileInput.disabled = true;
+      setStatus(`${files.length}장의 사진을 브라우저에서 분석하는 중입니다...`);
+
+      for (let index = 0; index < files.length; index += 1) {
+        const file = files[index];
+        try {
+          const image = await loadImage(file);
+          const predictions = await model.predict(image);
+          const best = [...predictions].sort((a, b) => b.probability - a.probability)[0];
+          const actual = getActualClass(file.name);
+          const predictedRaw = best ? best.className : "분석 실패";
+          const predicted = best && best.probability >= CONFIDENCE_THRESHOLD ? predictedRaw : "잘 모르겠어요";
+          const probability = best ? best.probability : 0;
+          const correct = normalizeLabel(actual) === normalizeLabel(predictedRaw) && probability >= CONFIDENCE_THRESHOLD;
+          results.push({ fileName:file.name, actual, predicted, predictedRaw, probability, correct, imageData:null });
+          if (!correct) results[results.length - 1].imageData = await fileToDataUrl(file);
+        } catch (error) {
+          console.error(error);
+          const actual = getActualClass(file.name);
+          results.push({ fileName:file.name, actual, predicted:"분석 실패", predictedRaw:"분석 실패", probability:0, correct:false, imageData:await fileToDataUrl(file) });
+        }
+        setStatus(`${index + 1}/${files.length}장 분석 완료`);
+      }
+      renderResults();
+      fileInput.disabled = false;
+      downloadButton.disabled = false;
+      clearButton.disabled = false;
+      setStatus(`${results.length}장의 평가가 끝났습니다.`);
+    }
+
+    // 분석 결과로 혼동행렬, 정분류율, 틀린 사진을 다시 그립니다.
+    function renderResults() {
+      const classMap = new Map();
+      model.getClassLabels().forEach(label => classMap.set(normalizeLabel(label), label));
+      results.forEach(result => { if (!classMap.has(normalizeLabel(result.actual))) classMap.set(normalizeLabel(result.actual), result.actual); });
+      const classes = [...classMap.entries()];
+      const columns = classes.map(([key, label]) => ({ key, label }));
+      const predictedKeys = results.map(result => normalizeLabel(result.predictedRaw));
+      predictedKeys.forEach(key => { if (key && !classMap.has(key)) { classMap.set(key, key); columns.push({ key, label:key }); } });
+
+      const matrix = new Map();
+      results.forEach(result => {
+        const row = normalizeLabel(result.actual);
+        const col = normalizeLabel(result.predictedRaw);
+        if (!matrix.has(row)) matrix.set(row, new Map());
+        const rowMap = matrix.get(row);
+        rowMap.set(col, (rowMap.get(col) || 0) + 1);
+      });
+      document.querySelector("#matrix-table thead").innerHTML = `<tr><th scope="col">실제\\예측</th>${columns.map(c => `<th scope="col">${escapeHtml(c.label)}</th>`).join("")}<th scope="col">합계</th></tr>`;
+      document.querySelector("#matrix-table tbody").innerHTML = [...classMap.entries()].map(([rowKey, rowLabel]) => {
+        const row = matrix.get(rowKey) || new Map();
+        const total = [...row.values()].reduce((sum, value) => sum + value, 0);
+        return `<tr><th scope="row">${escapeHtml(rowLabel)}</th>${columns.map(c => `<td>${row.get(c.key) || 0}</td>`).join("")}<td>${total}</td></tr>`;
+      }).join("");
+
+      const correctCount = results.filter(r => r.correct).length;
+      document.getElementById("total-count").textContent = results.length;
+      document.getElementById("correct-count").textContent = correctCount;
+      document.getElementById("overall-accuracy").textContent = results.length ? `${(correctCount / results.length * 100).toFixed(1)}%` : "-";
+
+      document.getElementById("accuracy-list").innerHTML = [...classMap.entries()].map(([key, label]) => {
+        const group = results.filter(r => normalizeLabel(r.actual) === key);
+        const correct = group.filter(r => r.correct).length;
+        const rate = group.length ? `${(correct / group.length * 100).toFixed(1)}%` : "-";
+        return `<div class="accuracy-item"><span>${escapeHtml(label)} (${group.length}장)</span><strong>${rate}</strong></div>`;
+      }).join("") || `<p class="empty">사진을 선택하면 클래스별 결과가 표시됩니다.</p>`;
+
+      const wrong = results.filter(r => !r.correct && r.imageData);
+      document.getElementById("wrong-grid").innerHTML = wrong.length ? wrong.map(r => `<article class="wrong-item"><img src="${r.imageData}" alt="틀린 사진 ${escapeHtml(r.fileName)}"><p><b>${escapeHtml(r.fileName)}</b><br>실제: ${escapeHtml(r.actual)}<br>예측: ${escapeHtml(r.predicted)} (${(r.probability * 100).toFixed(1)}%)</p></article>`).join("") : `<p class="empty">틀린 사진이 없습니다.</p>`;
+    }
+
+    function escapeHtml(value) {
+      return String(value).replace(/[&<>'"]/g, char => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", "'":"&#39;", '"':"&quot;" }[char]));
+    }
+
+    // UTF-8 BOM을 붙여 한글이 깨지지 않는 CSV 파일을 만듭니다.
+    function downloadCsv() {
+      const header = ["파일 이름", "실제 클래스", "예측 클래스", "최고 확률", "정분류 여부"];
+      const rows = results.map(r => [r.fileName, r.actual, r.predicted, `${(r.probability * 100).toFixed(1)}%`, r.correct ? "정분류" : "오분류"]);
+      const csv = [header, ...rows].map(row => row.map(value => `"${String(value).replace(/"/g, '""')}"`).join(",")).join("\r\n");
+      const blob = new Blob(["\ufeff" + csv], { type:"text/csv;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `도형분류평가_${new Date().toISOString().slice(0,10)}.csv`;
+      link.click();
+      URL.revokeObjectURL(url);
+    }
+
+    fileInput.addEventListener("change", event => evaluateFiles([...event.target.files]));
+    downloadButton.addEventListener("click", downloadCsv);
+    clearButton.addEventListener("click", () => { results.length = 0; fileInput.value = ""; renderResults(); downloadButton.disabled = true; clearButton.disabled = true; setStatus("결과를 지웠습니다. 사진을 다시 선택해 주세요."); });
+    loadModel();
+  </script>
+</body>
+</html>
