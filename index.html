@@ -3,11 +3,15 @@
   ==========================================================================
   초등학교 6학년 수학 6단원 「원기둥, 원뿔, 구」 수업용 웹 앱
   - 티처블 머신(Teachable Machine)으로 학습한 이미지 분류 모델을 불러와
-    카메라 화면 또는 업로드한 사진이 원기둥/원뿔/구 중 무엇인지 판정합니다.
+    카메라로 찍은 사진 또는 업로드한 사진이 원기둥/원뿔/구 중 무엇인지 판정합니다.
   - 모델 파일(model.json, metadata.json, 가중치)만 인터넷에서 내려받고,
     실제 이미지 분석은 학생의 브라우저 안에서만 이루어집니다.
-  - 카메라는 화면에 계속 보여 주기만 하고, "판정하기"를 누른 순간의
-    한 장면만 분석합니다(실시간 연속 판정 아님).
+  - 카메라 화면을 보다가 "사진 찍기"를 누르면 그 순간의 한 장을 찍어
+    화면에 고정하고 바로 판정합니다. "사진 다시 찍기"를 누르면 다시 카메라 화면으로 돌아갑니다.
+  - 찍은 사진과 올린 사진은 잘리지 않고 전체가 보이도록 표시하며,
+    AI에게도 사진 전체가 들어가도록 정사각형 여백을 붙여서 판정합니다.
+  - "화면 저장하기"를 누르면 사진과 판정 결과를 한 장의 그림(PNG)으로 만들어
+    기기에 내려받습니다(외부 서버로 보내지 않음).
   ==========================================================================
 -->
 <html lang="ko">
@@ -20,13 +24,17 @@
   <title>6학년 수학 | 원기둥·원뿔·구 구별하기</title>
   <!-- TensorFlow.js: 브라우저에서 AI 모델을 실행하기 위한 라이브러리 -->
   <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest/dist/tf.min.js"></script>
-  <!-- 티처블 머신 이미지 라이브러리: 모델 불러오기(tmImage.load), 웹캠(tmImage.Webcam), 예측(predict) 기능 제공 -->
+  <!-- 티처블 머신 이미지 라이브러리: 모델 불러오기(tmImage.load)와 예측(predict) 기능 제공
+       ※ 카메라는 이 라이브러리의 Webcam 대신 브라우저 기본 기능(getUserMedia)을 직접 사용합니다.
+         티처블 머신 Webcam은 영상을 정해진 크기로 잘라서 보여 주기 때문에, 사진이 잘리지 않게 하려고 바꿨습니다. -->
   <script src="https://cdn.jsdelivr.net/npm/@teachablemachine/image@latest/dist/teachablemachine-image.min.js"></script>
   <style>
     /* 화면 전체에서 공통으로 쓰는 색상·그림자 값(CSS 변수) */
     :root { --bg:#f4f7fb; --card:rgba(255,255,255,.92); --text:#172033; --muted:#68738a; --primary:#5b5ce2; --primary-dark:#4142ba; --border:#e6eaf2; --shadow:0 20px 50px rgba(38,49,93,.12); }
     /* 모든 요소의 크기 계산에 테두리·안쪽 여백을 포함시킴(레이아웃 계산을 쉽게) */
     * { box-sizing:border-box; }
+    /* hidden 속성이 붙은 요소는 다른 CSS(display:block 등)보다 우선해서 반드시 숨김 */
+    [hidden] { display:none !important; }
     /* 페이지 기본 글꼴, 글자색, 배경(위쪽이 밝은 보라빛 그라데이션) */
     body { margin:0; min-width:320px; min-height:100vh; font-family:Inter,Pretendard,"Noto Sans KR",system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; color:var(--text); background:radial-gradient(circle at top,#eef1ff 0,#f4f7fb 45%,#eef3f8 100%); }
     /* 전체 내용을 가운데 정렬하고 최대 폭을 960px로 제한 */
@@ -47,10 +55,12 @@
     .camera-area { padding:clamp(16px,4vw,32px); }
     /* 카메라 화면/사진이 표시되는 검은 틀(4:3 비율 유지) */
     .camera-frame { position:relative; display:grid; place-items:center; min-height:280px; overflow:hidden; border-radius:20px; background:#111827; aspect-ratio:4 / 3; }
-    /* 웹캠 캔버스가 들어갈 자리 */
-    #webcam-container { display:grid; place-items:center; width:100%; height:100%; }
-    /* 웹캠 영상과 업로드한 사진 모두 틀 안에 잘리지 않게 맞춰서 표시 */
-    #webcam-container canvas, #image-preview { display:block; width:100%; height:100%; object-fit:contain; }
+    /* 카메라 영상과 사진(찍은 사진·올린 사진)을 틀 전체에 겹쳐 놓고,
+       object-fit:contain으로 사진 비율을 유지한 채 "전체가 다 보이게" 맞춤
+       → 가로 사진·세로 사진 모두 잘리지 않고, 남는 부분은 검은 여백으로 보임 */
+    #camera-video, #image-preview { position:absolute; inset:0; display:block; width:100%; height:100%; object-fit:contain; }
+    /* 좌우 반전을 켰을 때 카메라 영상을 거울처럼 뒤집어 보여 줌 */
+    #camera-video.mirrored { transform:scaleX(-1); }
     /* 카메라를 켜기 전 보이는 안내 문구 */
     .camera-placeholder { padding:24px; color:#dbe4ff; text-align:center; line-height:1.6; }
     .camera-placeholder strong { display:block; margin-bottom:8px; font-size:1.1rem; }
@@ -63,15 +73,19 @@
     /* 마우스를 올리면 살짝 떠오르는 효과 */
     button:hover, .file-label:hover { transform:translateY(-2px); box-shadow:0 14px 24px rgba(91,92,226,.3); }
     /* 비활성화된 버튼은 흐리게 표시 */
-    button:disabled { cursor:wait; opacity:.65; transform:none; }
+    button:disabled { cursor:not-allowed; opacity:.5; transform:none; }
     /* "좌우 반전" 버튼: 보조 버튼이라 연한 색 */
     #flip-button { color:var(--primary-dark); background:#eef0ff; box-shadow:none; }
     #flip-button:hover { box-shadow:0 8px 18px rgba(91,92,226,.15); }
-    /* "판정하기" 버튼: 핵심 동작이라 눈에 띄는 주황색 */
-    #judge-button { background:linear-gradient(135deg,#e67e22,#f39c12); box-shadow:0 10px 20px rgba(230,126,34,.24); }
+    /* "사진 찍기" 버튼: 핵심 동작이라 눈에 띄는 주황색 */
+    #capture-button { background:linear-gradient(135deg,#e67e22,#f39c12); box-shadow:0 10px 20px rgba(230,126,34,.24); }
+    /* "사진 다시 찍기" 버튼: 파란색 */
+    #retake-button { background:linear-gradient(135deg,#3b82f6,#2563eb); box-shadow:0 10px 20px rgba(37,99,235,.22); }
+    /* "화면 저장하기" 버튼: 짙은 회색 */
+    #save-button { background:linear-gradient(135deg,#475569,#334155); box-shadow:0 10px 20px rgba(51,65,85,.22); }
     /* "사진 올리기" 라벨: 초록색 */
     .file-label { background:linear-gradient(135deg,#16a085,#27ae60); box-shadow:0 10px 20px rgba(22,160,133,.22); }
-    /* 실제 파일 선택 input은 화면에서 숨김(대신 라벨을 눌러 열도록 함). 
+    /* 실제 파일 선택 input은 화면에서 숨김(대신 라벨을 눌러 열도록 함).
        display:none 대신 이 방식을 써서 화면 읽기 프로그램 등 접근성은 유지 */
     #image-input { position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; }
 
@@ -115,37 +129,43 @@
     <header>
       <span class="eyebrow">초등학교 6학년 수학 · 6단원</span>
       <h1>원기둥 · 원뿔 · 구 구별하기</h1>
-      <p class="subtitle">카메라에 입체도형을 비추거나 사진을 올려 보세요.<br>AI가 원기둥, 원뿔, 구 중 어떤 도형인지 알려줍니다.</p>
+      <p class="subtitle">카메라로 입체도형 사진을 찍거나 사진을 올려 보세요.<br>AI가 원기둥, 원뿔, 구 중 어떤 도형인지 알려줍니다.</p>
     </header>
 
     <!-- ===== 카메라 + 결과 카드 ===== -->
     <section class="panel">
       <div class="camera-area">
-        <!-- 카메라 영상 또는 업로드한 사진이 표시되는 틀 -->
+        <!-- 카메라 영상 또는 사진(찍은 사진·올린 사진)이 표시되는 틀 -->
         <div class="camera-frame">
-          <!-- 웹캠 캔버스가 들어갈 자리. 카메라를 켜기 전에는 안내 문구(placeholder)만 보임 -->
-          <div id="webcam-container">
-            <div class="camera-placeholder" id="placeholder">
-              <strong>카메라를 시작하거나 사진을 올려 주세요</strong>
-              카메라 영상은 보이기만 하고, <b>판정하기</b>를 눌렀을 때 한 장만 분석합니다.
-            </div>
+          <!-- 카메라를 켜기 전에 보이는 안내 문구 -->
+          <div class="camera-placeholder" id="placeholder">
+            <strong>카메라를 시작하거나 사진을 올려 주세요</strong>
+            카메라 화면을 보다가 <b>사진 찍기</b>를 누르면 그 순간의 사진 한 장을 판정합니다.
           </div>
-          <!-- 사진을 올렸을 때 미리보기로 쓰는 이미지(처음엔 hidden으로 숨김) -->
-          <img id="image-preview" alt="선택한 입체도형 사진 미리보기" hidden />
+          <!-- 실시간 카메라 영상.
+               playsinline: 아이폰에서 전체 화면으로 튀어나가지 않고 틀 안에서 재생
+               muted: 소리 없이 자동 재생되도록 함 -->
+          <video id="camera-video" playsinline muted hidden></video>
+          <!-- 찍은 사진 또는 올린 사진을 보여 주는 이미지(처음엔 숨김) -->
+          <img id="image-preview" alt="판정할 입체도형 사진" hidden />
         </div>
 
         <!-- 조작 버튼들 -->
         <div class="controls">
           <!-- 카메라 켜기 -->
-          <button id="start-button" type="button">카메라 시작</button>
-          <!-- 현재 카메라 화면 한 장을 판정(카메라가 켜져야 활성화됨) -->
-          <button id="judge-button" type="button" disabled>판정하기</button>
-          <!-- 카메라 영상 좌우 뒤집기(카메라가 켜져야 활성화됨) -->
+          <button id="start-button" type="button" disabled>카메라 시작</button>
+          <!-- 지금 카메라 화면을 사진으로 찍고 바로 판정(카메라가 켜져야 활성화됨) -->
+          <button id="capture-button" type="button" disabled>사진 찍기</button>
+          <!-- 찍은 사진을 버리고 다시 카메라 화면으로 돌아감(사진을 찍은 뒤에만 활성화됨) -->
+          <button id="retake-button" type="button" disabled>사진 다시 찍기</button>
+          <!-- 카메라 영상 좌우 뒤집기(카메라 화면을 보고 있을 때만 활성화됨) -->
           <button id="flip-button" type="button" disabled>좌우 반전: 끔</button>
           <!-- 이 라벨을 누르면 아래 숨겨진 파일 선택 창이 열림 -->
           <label class="file-label" for="image-input">사진 올리기</label>
           <!-- 이미지 파일만 고를 수 있는 파일 선택 input -->
           <input id="image-input" type="file" accept="image/*" />
+          <!-- 사진 + 판정 결과를 한 장의 그림으로 저장(판정이 끝난 뒤에만 활성화됨) -->
+          <button id="save-button" type="button" disabled>화면 저장하기</button>
         </div>
 
         <!-- 진행 상황·오류 안내 메시지. aria-live로 화면 읽기 프로그램이 바뀐 내용을 읽어 줌 -->
@@ -178,21 +198,45 @@
     // 도형 이름 대신 "잘 모르겠어요"를 보여 줌 → 애매한 사진에 억지로 답하지 않게 함
     const CONFIDENCE_THRESHOLD = 0.7;
 
+    // 카메라에 요청할 해상도(4:3). "ideal"로 요청하므로 기기가 지원하지 않으면
+    // 가장 가까운 해상도로 자동 조정됨
+    const CAMERA_WIDTH = 1280;
+    const CAMERA_HEIGHT = 960;
+
+    // 티처블 머신 모델은 들어온 사진의 "가운데 정사각형"만 잘라서 판정함.
+    // 사진 전체를 AI가 보게 하려고, 사진 둘레에 이 색의 여백을 붙여 정사각형으로 만든 뒤 판정함
+    const PAD_COLOR = "#ffffff";
+
+    // AI에게 넘길 사진의 최대 크기(픽셀). 모델은 어차피 224×224로 줄여서 보므로
+    // 너무 큰 사진은 미리 줄여서 기기 부담을 줄임
+    const MAX_ANALYSIS_SIZE = 640;
+
+    // "화면 저장하기"로 만드는 그림의 가로 폭과, 그 안에 들어가는 사진의 최대 높이(픽셀)
+    // → 세로로 아주 긴 사진도 저장 그림이 지나치게 길어지지 않게 함
+    const SAVE_WIDTH = 1000;
+    const SAVE_PHOTO_MAX_HEIGHT = 900;
+
     // 이 앱이 구별하는 세 가지 도형(모델의 클래스 이름을 못 읽었을 때 기본값으로 사용)
     const CLASS_NAMES = ["원기둥", "원뿔", "구"];
 
     // 모델의 클래스 이름이 영어(cylinder 등)로 되어 있어도 한국어로 바꿔 보여 주기 위한 대응표
     const LABEL_ALIASES = { "원기둥":"원기둥", cylinder:"원기둥", cylinders:"원기둥", "원뿔":"원뿔", cone:"원뿔", cones:"원뿔", "구":"구", sphere:"구", spheres:"구", ball:"구" };
 
+    // 다음 행동을 안내하는 문장(판정이 끝난 뒤 상태 메시지 뒤에 붙임)
+    const HINT_AFTER_CAPTURE = "화면 저장하기로 결과를 저장하거나, 사진 다시 찍기를 눌러 주세요.";
+    const HINT_AFTER_UPLOAD = "화면 저장하기로 결과를 저장하거나, 다른 사진을 올릴 수 있습니다.";
+    const HINT_LIVE = "도형을 화면 가운데에 맞춘 뒤, 사진 찍기를 눌러 주세요.";
+
     // =====================================================================
     // 2. 상태를 기억하는 변수
     // =====================================================================
-    let model;            // 불러온 티처블 머신 모델
-    let webcam;           // 티처블 머신 웹캠 객체
-    let animationId;      // 카메라 화면 갱신 반복(requestAnimationFrame)의 번호 — 멈출 때 사용
-    let isRunning = false; // 카메라가 켜져 있는지 여부
-    let isJudging = false; // 지금 판정 중인지 여부(판정하기 연타 방지)
-    let imageObjectUrl;   // 업로드한 사진을 화면에 보여 주기 위한 임시 주소 — 다 쓰면 해제
+    let model;              // 불러온 티처블 머신 모델
+    let stream;             // 카메라 영상 스트림 — 카메라를 끌 때 사용
+    let isRunning = false;  // 카메라가 켜져 있는지 여부
+    let isMirrored = false; // 좌우 반전이 켜져 있는지 여부
+    let isJudging = false;  // 지금 판정 중인지 여부(사진 찍기 연타 방지)
+    let imageObjectUrl;     // 업로드한 사진을 화면에 보여 주기 위한 임시 주소 — 다 쓰면 해제
+    let lastResult = null;  // 마지막 판정 결과(화면 저장하기에 사용). 판정 전이면 null
 
     // =====================================================================
     // 3. 화면 요소 가져오기
@@ -201,12 +245,14 @@
     // document.getElementById를 짧게 쓰기 위한 도우미 함수
     const $ = (id) => document.getElementById(id);
     const startButton = $("start-button");
-    const judgeButton = $("judge-button");
+    const captureButton = $("capture-button");
+    const retakeButton = $("retake-button");
     const flipButton = $("flip-button");
+    const saveButton = $("save-button");
     const imageInput = $("image-input");
     const status = $("status");
     const placeholder = $("placeholder");
-    const webcamContainer = $("webcam-container");
+    const video = $("camera-video");
     const imagePreview = $("image-preview");
     const topLabel = $("top-label");
     const topProbability = $("top-probability");
@@ -244,6 +290,54 @@
       `).join("");
     }
 
+    // 판정 결과를 처음 상태("대기 중", 0%)로 되돌림 — 다시 찍거나 새 사진을 올릴 때 사용
+    // 저장할 결과도 없어지므로 "화면 저장하기" 버튼도 비활성화
+    function resetResult() {
+      topLabel.textContent = "대기 중";
+      topProbability.textContent = "--%";
+      probabilities.querySelectorAll(".probability-value").forEach((el) => { el.textContent = "0.0%"; });
+      probabilities.querySelectorAll(".bar-fill").forEach((el) => { el.style.width = "0"; });
+      lastResult = null;
+      saveButton.disabled = true;
+    }
+
+    // 사진(이미지·캔버스)의 둘레에 여백을 붙여 정사각형 캔버스로 만듦
+    // 이유: 티처블 머신 모델은 사진의 가운데 정사각형만 잘라서 보기 때문에,
+    //       가로로 긴 사진이면 양옆이, 세로로 긴 사진이면 위아래가 잘린 채 판정됨.
+    //       미리 정사각형으로 만들어 두면 잘리는 부분 없이 사진 전체가 판정에 쓰임
+    function makeSquareWithPadding(source) {
+      // <img>는 naturalWidth/Height, <canvas>는 width/height가 실제 크기
+      const width = source.naturalWidth || source.width;
+      const height = source.naturalHeight || source.height;
+      // 긴 변이 MAX_ANALYSIS_SIZE를 넘으면 비율을 유지한 채 줄임(작은 사진은 그대로)
+      const scale = Math.min(1, MAX_ANALYSIS_SIZE / Math.max(width, height));
+      const drawWidth = Math.round(width * scale);
+      const drawHeight = Math.round(height * scale);
+      // 긴 변 길이로 정사각형 캔버스를 만듦
+      const size = Math.max(drawWidth, drawHeight);
+      const canvas = document.createElement("canvas");
+      canvas.width = size;
+      canvas.height = size;
+      const ctx = canvas.getContext("2d");
+      // 캔버스를 여백 색으로 칠한 뒤, 사진을 정가운데에 그림
+      ctx.fillStyle = PAD_COLOR;
+      ctx.fillRect(0, 0, size, size);
+      ctx.drawImage(source, (size - drawWidth) / 2, (size - drawHeight) / 2, drawWidth, drawHeight);
+      return canvas;
+    }
+
+    // 판정 결과에 맞는 상태 메시지를 보여 줌
+    // result가 null이면 오류, confident가 false면 확신이 낮은 경우
+    function showResultStatus(result, nextHint) {
+      if (!result) {
+        setStatus("이미지를 분석하지 못했습니다. 다른 사진을 사용해 주세요.", true);
+      } else if (!result.confident) {
+        setStatus(`도형을 확실하게 판단하기 어렵습니다. ${nextHint}`);
+      } else {
+        setStatus(`판정이 끝났습니다. ${nextHint}`);
+      }
+    }
+
     // =====================================================================
     // 5. 모델 불러오기
     // =====================================================================
@@ -263,33 +357,65 @@
         console.error(error);
         setStatus("모델을 불러오지 못했습니다. 인터넷 연결을 확인해 주세요.", true);
         startButton.disabled = true;
-        judgeButton.disabled = true;
+        captureButton.disabled = true;
+        retakeButton.disabled = true;
+        saveButton.disabled = true;
         imageInput.disabled = true;
       }
     }
 
     // =====================================================================
-    // 6. 카메라 켜기 / 끄기
+    // 6. 화면 전환(카메라 화면 ↔ 사진 화면)
     // =====================================================================
 
-    // 카메라를 완전히 끄고 화면·버튼을 처음 상태로 되돌림
+    // 사진 미리보기를 지움(업로드 사진의 임시 주소도 해제)
+    function clearImagePreview() {
+      imagePreview.onload = null;
+      imagePreview.onerror = null;
+      imagePreview.removeAttribute("src");
+      imagePreview.hidden = true;
+      // 임시 주소를 해제해서 메모리를 돌려줌
+      if (imageObjectUrl) {
+        URL.revokeObjectURL(imageObjectUrl);
+        imageObjectUrl = null;
+      }
+    }
+
+    // 실시간 카메라 화면을 보여 주는 상태로 바꿈
+    // (사진 찍기·좌우 반전 가능, 다시 찍기는 아직 불가)
+    function showLiveView() {
+      clearImagePreview();
+      placeholder.hidden = true;
+      video.hidden = false;
+      captureButton.disabled = false;
+      retakeButton.disabled = true;
+      flipButton.disabled = false;
+    }
+
+    // =====================================================================
+    // 7. 카메라 켜기 / 끄기
+    // =====================================================================
+
+    // 카메라를 완전히 끄고 버튼을 처음 상태로 되돌림
     function stopCamera() {
       isRunning = false;
-      // 화면 갱신 반복 중지
-      if (animationId) cancelAnimationFrame(animationId);
-      animationId = null;
-      // 웹캠 스트림을 멈춰서 카메라 표시등도 꺼지게 함
-      if (webcam) {
-        webcam.stop();
-        webcam = null;
+      // 카메라 스트림을 멈춰서 카메라 표시등도 꺼지게 함
+      if (stream) {
+        stream.getTracks().forEach((track) => track.stop());
+        stream = null;
       }
-      // 웹캠 캔버스를 지우고 안내 문구를 다시 보여 줌
-      webcamContainer.innerHTML = "";
-      webcamContainer.appendChild(placeholder);
-      placeholder.hidden = false;
-      // 카메라가 꺼졌으니 판정·반전 버튼은 비활성화
-      judgeButton.disabled = true;
+      video.pause();
+      video.srcObject = null;
+      video.hidden = true;
+      // 사진도 안 보이고 있다면 안내 문구를 다시 보여 줌
+      placeholder.hidden = !imagePreview.hidden;
+      // 카메라가 꺼졌으니 사진 찍기·다시 찍기·반전 버튼은 비활성화
+      captureButton.disabled = true;
+      retakeButton.disabled = true;
       flipButton.disabled = true;
+      // 좌우 반전 설정도 초기화
+      isMirrored = false;
+      video.classList.remove("mirrored");
       flipButton.textContent = "좌우 반전: 끔";
       // 모델이 준비된 경우에만 "카메라 시작"을 다시 누를 수 있게 함
       startButton.disabled = !model;
@@ -300,31 +426,36 @@
     async function startCamera() {
       // 모델이 아직 준비되지 않았거나 이미 카메라가 켜져 있으면 아무것도 하지 않음
       if (!model || isRunning) return;
-      // 혹시 남아 있는 카메라·사진 미리보기를 먼저 정리
-      stopCamera();
+      // 아주 오래된 브라우저 등 카메라 기능이 없는 경우
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        setStatus("이 브라우저에서는 카메라를 사용할 수 없습니다. 사진 올리기를 이용해 주세요.", true);
+        return;
+      }
+      // 혹시 남아 있는 사진 미리보기·카메라를 먼저 정리하고, 이전 결과도 지움
       clearImagePreview();
+      stopCamera();
+      resetResult();
       try {
         startButton.disabled = true;
         setStatus("카메라 권한을 기다리는 중입니다...");
-        // 720×540(4:3) 크기의 웹캠 생성. 세 번째 값 false = 처음에는 좌우 반전 안 함
-        webcam = new tmImage.Webcam(720, 540, false);
+        // 카메라 영상 요청
         // facingMode "environment" = 휴대폰·태블릿에서는 후면 카메라를 우선 사용
         // (노트북처럼 후면 카메라가 없으면 있는 카메라를 사용)
-        await webcam.setup({ facingMode: "environment" });
-        await webcam.play();
-        // 캔버스에 CSS로 걸린 뒤집기 효과가 있으면 없앰(좌우 반전은 flip 버튼으로만 제어)
-        webcam.canvas.style.transform = "none";
-        webcam.canvas.style.webkitTransform = "none";
-        // 안내 문구를 숨기고 웹캠 화면을 틀 안에 넣음
-        placeholder.hidden = true;
-        webcamContainer.prepend(webcam.canvas);
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: {
+            facingMode: { ideal: "environment" },
+            width: { ideal: CAMERA_WIDTH },
+            height: { ideal: CAMERA_HEIGHT },
+          },
+          audio: false,
+        });
+        // 받아 온 영상을 <video>에 연결하고 재생
+        video.srcObject = stream;
+        await video.play();
         isRunning = true;
-        judgeButton.disabled = false;
-        flipButton.disabled = false;
+        showLiveView();
         startButton.textContent = "카메라 실행 중";
-        setStatus("도형을 화면 중앙에 맞춘 뒤, 판정하기를 눌러 주세요.");
-        // 화면을 계속 새로 그리는 반복 시작
-        animationId = window.requestAnimationFrame(cameraLoop);
+        setStatus(HINT_LIVE);
       } catch (error) {
         // 카메라 권한을 거부했거나, HTTPS가 아닌 주소에서 열었거나, 카메라가 없는 경우
         console.error(error);
@@ -333,100 +464,121 @@
       }
     }
 
-    // 매 프레임마다 웹캠 화면을 새로 그림(영상 표시만 하고 예측은 하지 않음)
-    // → 계속 예측하지 않으므로 기기 부담이 적고, 결과가 계속 바뀌어 혼란스러운 것도 막음
-    function cameraLoop() {
-      if (!isRunning || !webcam) return;
-      webcam.update();
-      animationId = window.requestAnimationFrame(cameraLoop);
-    }
-
     // 좌우 반전 켜기/끄기(전면 카메라로 볼 때 거울처럼 보이게 하고 싶을 때 사용)
+    // 화면 표시만 CSS로 뒤집고, 사진을 찍을 때도 같은 방향으로 찍히도록 takePhoto에서 반영함
     function toggleFlip() {
-      if (!webcam || !isRunning) return;
-      webcam.flip = !webcam.flip;
-      flipButton.textContent = `좌우 반전: ${webcam.flip ? "켬" : "끔"}`;
+      if (!isRunning) return;
+      isMirrored = !isMirrored;
+      video.classList.toggle("mirrored", isMirrored);
+      flipButton.textContent = `좌우 반전: ${isMirrored ? "켬" : "끔"}`;
     }
 
     // =====================================================================
-    // 7. 판정하기(카메라)
+    // 8. 사진 찍기 / 사진 다시 찍기
     // =====================================================================
 
-    // "판정하기"를 누른 순간의 카메라 화면 한 장을 모델에 넣어 판정
-    async function judgeCurrentFrame() {
-      // 카메라가 꺼져 있거나 이미 판정 중이면 무시(연타 방지)
-      if (!webcam || !isRunning || isJudging) return;
+    // "사진 찍기"를 누른 순간의 카메라 화면을 사진으로 찍어 화면에 고정하고 바로 판정
+    async function takePhoto() {
+      // 카메라가 꺼져 있거나, 이미 판정 중이거나, 영상이 아직 준비되지 않았으면 무시
+      if (!isRunning || isJudging || !video.videoWidth) return;
       isJudging = true;
-      judgeButton.disabled = true;
-      setStatus("현재 화면의 한 장을 판정하는 중입니다...");
+      captureButton.disabled = true;
+      flipButton.disabled = true;
       try {
-        // 현재 웹캠 캔버스(지금 보이는 화면)를 판정
-        // ※ 두 번째 값 "카메라"는 predict 함수에서 받지 않으므로 실제로는 쓰이지 않음
-        await predict(webcam.canvas, "카메라");
-        setStatus("판정이 끝났습니다. 다시 판정하려면 판정하기를 눌러 주세요.");
+        // 카메라 영상의 "원래 크기 전체"로 캔버스를 만듦
+        // → 화면 틀 크기와 상관없이 카메라가 찍은 장면이 하나도 잘리지 않음
+        const width = video.videoWidth;
+        const height = video.videoHeight;
+        const canvas = document.createElement("canvas");
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext("2d");
+        // 좌우 반전이 켜져 있으면 화면에 보이던 모습 그대로 찍히도록 캔버스도 뒤집어서 그림
+        if (isMirrored) {
+          ctx.translate(width, 0);
+          ctx.scale(-1, 1);
+        }
+        ctx.drawImage(video, 0, 0, width, height);
+
+        // 찍은 사진을 화면에 표시(카메라 영상은 숨기기만 하고 계속 켜 둠 → 다시 찍기가 빠름)
+        // toDataURL로 만든 사진 주소는 브라우저 안에만 있고 외부로 전송되지 않음
+        imagePreview.src = canvas.toDataURL("image/jpeg", 0.92);
+        imagePreview.hidden = false;
+        video.hidden = true;
+
+        // 찍은 사진(원본 크기 캔버스)을 판정
+        setStatus("찍은 사진을 판정하는 중입니다...");
+        const result = await predict(canvas);
+        showResultStatus(result, HINT_AFTER_CAPTURE);
       } finally {
-        // 성공하든 실패하든 판정 상태를 풀고, 카메라가 켜져 있으면 버튼을 다시 활성화
+        // 판정이 끝나면 "사진 다시 찍기"만 누를 수 있게 함
         isJudging = false;
-        judgeButton.disabled = !isRunning;
+        retakeButton.disabled = !isRunning;
       }
     }
 
+    // 찍은 사진을 버리고 다시 실시간 카메라 화면으로 돌아감
+    function retakePhoto() {
+      if (!isRunning || isJudging) return;
+      resetResult();
+      showLiveView();
+      setStatus(HINT_LIVE);
+    }
+
     // =====================================================================
-    // 8. 사진 올리기
+    // 9. 사진 올리기
     // =====================================================================
 
     // 파일 선택 창에서 사진을 고르면 실행됨
     function handleImageUpload(event) {
       const file = event.target.files[0];
+      // 같은 사진을 다시 골라도 change 이벤트가 일어나도록 선택값을 비워 둠
+      event.target.value = "";
       // 파일이 없거나 이미지가 아니면 무시
       if (!file || !file.type.startsWith("image/")) return;
-      // 카메라는 끄고, 이전 사진 미리보기는 정리
-      stopCamera();
+      // 이전 사진 미리보기는 정리하고 카메라는 끔, 이전 결과도 지움
       clearImagePreview();
+      stopCamera();
+      resetResult();
       // 고른 파일을 서버에 올리지 않고, 브라우저 안에서만 쓰는 임시 주소로 만들어 미리보기에 표시
       imageObjectUrl = URL.createObjectURL(file);
-      imagePreview.src = imageObjectUrl;
+      placeholder.hidden = true;
       imagePreview.hidden = false;
-      webcamContainer.hidden = true;
       // 사진이 다 불러와진 뒤에 판정해야 하므로 onload에서 예측 실행
       imagePreview.onload = async () => {
         setStatus("사진 한 장을 브라우저에서 분석하는 중입니다...");
-        // ※ 두 번째 값 "사진"도 predict 함수에서 쓰이지 않음
-        await predict(imagePreview, "사진");
-        setStatus("사진 판정이 끝났습니다. 다른 사진을 올리거나 카메라를 사용할 수 있습니다.");
+        const result = await predict(imagePreview);
+        showResultStatus(result, HINT_AFTER_UPLOAD);
       };
-    }
-
-    // 사진 미리보기를 지우고 웹캠 영역을 다시 보이게 함
-    function clearImagePreview() {
-      imagePreview.onload = null;
-      imagePreview.removeAttribute("src");
-      imagePreview.hidden = true;
-      webcamContainer.hidden = false;
-      // 임시 주소를 해제해서 메모리를 돌려줌
-      if (imageObjectUrl) {
-        URL.revokeObjectURL(imageObjectUrl);
-        imageObjectUrl = null;
-      }
+      // 손상된 파일 등으로 사진을 열 수 없는 경우
+      imagePreview.onerror = () => {
+        setStatus("사진을 열 수 없습니다. 다른 사진을 사용해 주세요.", true);
+      };
+      imagePreview.src = imageObjectUrl;
     }
 
     // =====================================================================
-    // 9. 예측(판정)과 결과 표시 — 카메라와 사진이 함께 쓰는 핵심 함수
+    // 10. 예측(판정)과 결과 표시 — 사진 찍기와 사진 올리기가 함께 쓰는 핵심 함수
     // =====================================================================
 
-    // source: 판정할 이미지(웹캠 캔버스 또는 <img> 요소)
+    // source: 판정할 이미지(찍은 사진 캔버스 또는 <img> 요소)
+    // 반환값: 성공하면 { confident: 기준 이상인지 여부 }, 실패하면 null
+    //        → 호출한 쪽이 결과에 맞는 상태 메시지를 정확하게 보여 줄 수 있음
     async function predict(source) {
-      if (!model) return;
+      if (!model) return null;
       try {
+        // 사진 전체가 판정에 쓰이도록 여백을 붙여 정사각형으로 만든 뒤 모델에 넣음
+        const input = makeSquareWithPadding(source);
         // 모델이 각 도형일 확률을 계산해 [{className, probability}, …] 형태로 돌려줌
-        const predictions = await model.predict(source);
+        const predictions = await model.predict(input);
         // 원본 순서는 유지하기 위해 복사본을 만들어 확률이 높은 순으로 정렬
         const sorted = [...predictions].sort((a, b) => b.probability - a.probability);
         // 가장 확률이 높은 도형
         const best = sorted[0];
         const bestProbability = best ? best.probability : 0;
+        const confident = bestProbability >= CONFIDENCE_THRESHOLD;
         // 기준(70%) 이상이면 도형 이름, 미만이면 "잘 모르겠어요" 표시
-        topLabel.textContent = bestProbability >= CONFIDENCE_THRESHOLD ? normalizeLabel(best.className) : "잘 모르겠어요";
+        topLabel.textContent = confident ? normalizeLabel(best.className) : "잘 모르겠어요";
         // 가장 높은 확률을 소수 첫째 자리까지 퍼센트로 표시
         topProbability.textContent = `${(bestProbability * 100).toFixed(1)}%`;
         // 도형별 카드의 퍼센트 숫자와 막대 길이를 갱신
@@ -438,33 +590,174 @@
           if (value) value.textContent = `${percent.toFixed(1)}%`;
           if (bar) bar.style.width = `${percent}%`;
         });
-        // 확신이 낮을 때는 상태 메시지로도 알려 줌
-        // ※ 이 메시지는 predict가 끝난 직후 호출한 쪽(judgeCurrentFrame, handleImageUpload)의
-        //   "판정이 끝났습니다" 메시지로 곧바로 덮어써져 화면에는 거의 보이지 않음
-        if (bestProbability < CONFIDENCE_THRESHOLD) setStatus("도형을 확실하게 판단하기 어렵습니다.");
+        // 화면 저장하기에서 쓸 수 있도록 이번 판정 결과를 기억해 두고, 저장 버튼을 켬
+        lastResult = {
+          topText: topLabel.textContent,
+          topPercent: topProbability.textContent,
+          items: predictions.map((p) => ({ name: normalizeLabel(p.className), percent: p.probability * 100 })),
+        };
+        saveButton.disabled = false;
+        return { confident };
       } catch (error) {
-        // 이미지 분석 중 오류(손상된 이미지 등)
-        // ※ 오류는 여기서 처리되고 다시 던지지 않으므로, 이후 호출한 쪽의 "판정이 끝났습니다"
-        //   메시지가 이 오류 메시지를 덮어쓸 수 있음
+        // 이미지 분석 중 오류(손상된 이미지 등) — 메시지는 호출한 쪽에서 보여 줌
         console.error(error);
-        setStatus("이미지를 분석하지 못했습니다. 다른 사진을 사용해 주세요.", true);
+        return null;
       }
     }
 
     // =====================================================================
-    // 10. 이벤트 연결 및 시작
+    // 11. 화면 저장하기 — 사진과 판정 결과를 한 장의 그림(PNG)으로 저장
+    // =====================================================================
+
+    // 캔버스에 모서리가 둥근 사각형 경로를 그리는 도우미 함수
+    // (일부 오래된 브라우저에는 ctx.roundRect가 없어서 직접 만듦)
+    function drawRoundRect(ctx, x, y, w, h, r) {
+      ctx.beginPath();
+      ctx.moveTo(x + r, y);
+      ctx.arcTo(x + w, y, x + w, y + h, r);
+      ctx.arcTo(x + w, y + h, x, y + h, r);
+      ctx.arcTo(x, y + h, x, y, r);
+      ctx.arcTo(x, y, x + w, y, r);
+      ctx.closePath();
+    }
+
+    // 저장 파일 이름을 "원기둥원뿔구_판정결과_20261029_155800.png"처럼 날짜·시간으로 만듦
+    // → 여러 번 저장해도 이름이 겹치지 않음
+    function makeFileName() {
+      const now = new Date();
+      const pad = (n) => String(n).padStart(2, "0");
+      const date = `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}`;
+      const time = `${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
+      return `원기둥원뿔구_판정결과_${date}_${time}.png`;
+    }
+
+    // "화면 저장하기"를 누르면 실행됨
+    // 지금 보이는 사진(찍은 사진 또는 올린 사진) + 판정 결과 + 도형별 확률 막대를
+    // 새 캔버스에 직접 그려서 PNG 파일로 내려받음
+    function saveScreen() {
+      // 판정 결과가 없거나 사진이 안 보이면 저장할 것이 없으므로 무시
+      if (!lastResult || imagePreview.hidden || !imagePreview.naturalWidth) return;
+
+      // ---- 1) 크기 계산 ----
+      const PAD = 40;                          // 바깥 여백
+      const FONT = '"Noto Sans KR","Apple SD Gothic Neo","Malgun Gothic",sans-serif'; // 한글 글꼴
+      const boxWidth = SAVE_WIDTH - PAD * 2;   // 사진·막대가 들어갈 폭
+      const photoW = imagePreview.naturalWidth;
+      const photoH = imagePreview.naturalHeight;
+      // 사진 비율을 유지하면서 폭(boxWidth)과 최대 높이 안에 "전체가" 들어가도록 줄임 → 사진이 잘리지 않음
+      const scale = Math.min(boxWidth / photoW, SAVE_PHOTO_MAX_HEIGHT / photoH);
+      const drawW = Math.round(photoW * scale);
+      const drawH = Math.round(photoH * scale);
+      const TITLE_H = 70;   // 제목 줄 높이
+      const RESULT_H = 120; // 판정 결과(도형 이름·확률) 영역 높이
+      const ROW_H = 60;     // 도형별 확률 한 줄 높이
+      const FOOTER_H = 50;  // 저장 시각 줄 높이
+      const height = PAD + TITLE_H + drawH + RESULT_H + lastResult.items.length * ROW_H + FOOTER_H + PAD;
+
+      // ---- 2) 캔버스 만들고 배경 칠하기 ----
+      const canvas = document.createElement("canvas");
+      canvas.width = SAVE_WIDTH;
+      canvas.height = height;
+      const ctx = canvas.getContext("2d");
+      ctx.fillStyle = "#f4f7fb";
+      ctx.fillRect(0, 0, SAVE_WIDTH, height);
+      ctx.textBaseline = "middle";
+
+      // ---- 3) 제목 ----
+      ctx.fillStyle = "#172033";
+      ctx.font = `900 36px ${FONT}`;
+      ctx.textAlign = "center";
+      ctx.fillText("원기둥 · 원뿔 · 구 구별하기", SAVE_WIDTH / 2, PAD + TITLE_H / 2 - 8);
+      let y = PAD + TITLE_H;
+
+      // ---- 4) 사진(검은 둥근 틀 안 가운데에 전체가 보이게) ----
+      ctx.save();
+      drawRoundRect(ctx, PAD, y, boxWidth, drawH, 20);
+      ctx.fillStyle = "#111827";
+      ctx.fill();
+      ctx.clip(); // 사진 모서리도 둥글게 보이도록 틀 모양으로 자름(틀 크기가 사진에 맞춰져 있어 내용은 잘리지 않음)
+      ctx.drawImage(imagePreview, PAD + (boxWidth - drawW) / 2, y, drawW, drawH);
+      ctx.restore();
+      y += drawH;
+
+      // ---- 5) 판정 결과(도형 이름 + 확률) ----
+      ctx.textAlign = "center";
+      ctx.fillStyle = "#68738a";
+      ctx.font = `700 24px ${FONT}`;
+      ctx.fillText("판정 결과", SAVE_WIDTH / 2, y + 36);
+      ctx.fillStyle = "#4142ba";
+      ctx.font = `900 46px ${FONT}`;
+      ctx.fillText(`${lastResult.topText}  ${lastResult.topPercent}`, SAVE_WIDTH / 2, y + 86);
+      y += RESULT_H;
+
+      // ---- 6) 도형별 확률(이름, 퍼센트, 막대그래프) ----
+      lastResult.items.forEach((item) => {
+        // 왼쪽: 도형 이름
+        ctx.textAlign = "left";
+        ctx.fillStyle = "#172033";
+        ctx.font = `800 24px ${FONT}`;
+        ctx.fillText(item.name, PAD, y + 16);
+        // 오른쪽: 확률(%)
+        ctx.textAlign = "right";
+        ctx.fillStyle = "#4142ba";
+        ctx.fillText(`${item.percent.toFixed(1)}%`, SAVE_WIDTH - PAD, y + 16);
+        // 막대 바탕(회색)
+        drawRoundRect(ctx, PAD, y + 36, boxWidth, 12, 6);
+        ctx.fillStyle = "#e9ecf5";
+        ctx.fill();
+        // 확률만큼 채운 막대(보라색). 아주 작은 값도 둥근 모양이 보이도록 최소 12px
+        const fillWidth = boxWidth * item.percent / 100;
+        if (fillWidth > 0.5) {
+          drawRoundRect(ctx, PAD, y + 36, Math.max(fillWidth, 12), 12, 6);
+          ctx.fillStyle = "#6968f0";
+          ctx.fill();
+        }
+        y += ROW_H;
+      });
+
+      // ---- 7) 맨 아래 저장 시각 ----
+      ctx.textAlign = "center";
+      ctx.fillStyle = "#68738a";
+      ctx.font = `500 18px ${FONT}`;
+      ctx.fillText(`저장한 때: ${new Date().toLocaleString("ko-KR")}`, SAVE_WIDTH / 2, y + FOOTER_H / 2);
+
+      // ---- 8) PNG 파일로 내려받기 ----
+      // 캔버스를 파일 데이터(blob)로 바꾼 뒤, 보이지 않는 링크를 만들어 눌러서 내려받음
+      // (파일은 학생 기기에만 저장되고 외부로 전송되지 않음)
+      canvas.toBlob((blob) => {
+        if (!blob) {
+          setStatus("화면을 저장하지 못했습니다. 다시 시도해 주세요.", true);
+          return;
+        }
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = makeFileName();
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        // 내려받기가 시작될 시간을 준 뒤 임시 주소를 해제해서 메모리를 돌려줌
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+        setStatus("판정 결과 화면을 그림 파일(PNG)로 저장했습니다.");
+      }, "image/png");
+    }
+
+    // =====================================================================
+    // 12. 이벤트 연결 및 시작
     // =====================================================================
 
     // 각 버튼·파일 선택에 동작 연결
     startButton.addEventListener("click", startCamera);
-    judgeButton.addEventListener("click", judgeCurrentFrame);
+    captureButton.addEventListener("click", takePhoto);
+    retakeButton.addEventListener("click", retakePhoto);
     flipButton.addEventListener("click", toggleFlip);
+    saveButton.addEventListener("click", saveScreen);
     imageInput.addEventListener("change", handleImageUpload);
 
     // 페이지를 닫거나 이동할 때 카메라를 끄고 임시 사진 주소를 정리
     window.addEventListener("beforeunload", () => {
-      stopCamera();
       clearImagePreview();
+      stopCamera();
     });
 
     // 페이지가 열리면 바로 모델 불러오기 시작
