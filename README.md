@@ -6,7 +6,7 @@ Teachable Machine을 활용하여 입체도형 사진이나 웹캠 영상을 분
 
 ### 배포 링크
 
-[원기둥·원뿔·구 구별하기 앱 실행하기](https://m20261517.github.io/math/?v=80cf1413)
+[원기둥·원뿔·구 구별하기 앱 실행하기](https://m20261517.github.io/math/?v=04921205)
 
 [교사용 평가 화면 열기](https://m20261517.github.io/math/eval.html)
 
