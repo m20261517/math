@@ -159,8 +159,8 @@
     //    → 클라우드 주소가 안 될 때를 위한 예비
     // ※ 모델을 다시 학습해서 새 주소를 받으면 ①의 주소만 바꾸면 됨(끝의 / 꼭 포함)
     const MODEL_SOURCES = [
-      { name: "티처블 머신 클라우드", base: "https://teachablemachine.withgoogle.com/models/z8xEBhNXJ/" },
-      { name: "이 페이지와 같은 폴더", base: new URL("./", window.location.href).href, local: true },
+      { name: "GitHub Pages에 배포된 모델", base: new URL("./", window.location.href).href, local: true },
+      { name: "티처블 머신 클라우드", base: "https://teachablemachine.withgoogle.com/models/z8xEBhNX/" },
     ];
 
     // 판정 기준 확률(70%). 가장 높은 확률이 이보다 낮으면 "잘 모르겠어요"로 처리
