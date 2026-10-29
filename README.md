@@ -10,6 +10,7 @@ Teachable Machine을 활용하여 입체도형 사진이나 웹캠 영상을 분
 
 > GitHub Pages가 활성화되어 있어야 위 링크에서 앱을 실행할 수 있습니다.
 
+[교사용 평가 화면] (https://m20261517.github.io/math/eval.html)
 ### 주요 기능
 
 - 웹캠 영상 실시간 표시 및 분류
