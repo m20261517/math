@@ -162,6 +162,8 @@
       { name: "티처블 머신 클라우드", base: "https://teachablemachine.withgoogle.com/models/z8xEBhNXJ/" },
       { name: "이 페이지와 같은 폴더", base: new URL("./", window.location.href).href, local: true },
     ];
+    // 새 모델이 브라우저 캐시에 남은 이전 파일보다 우선 사용되도록 함
+    const MODEL_VERSION = "20261030-081954";
 
     // 판정 기준 확률(70%). 가장 높은 확률이 이보다 낮으면 "잘 모르겠어요"로 처리
     // → 학생용 앱과 같은 기준을 써야 평가 결과가 실제 수업 상황과 같아짐
@@ -334,7 +336,11 @@
           await checkModelFiles(source.base);
           setStatus(`${source.name}에서 AI 모델을 불러오는 중입니다...`);
           // model.json과 metadata.json으로 모델을 만듦(weights.bin은 자동으로 함께 불러옴)
-          model = await tmImage.load(`${source.base}model.json`, `${source.base}metadata.json`);
+          const modelUrl = new URL("model.json", source.base);
+          const metadataUrl = new URL("metadata.json", source.base);
+          modelUrl.searchParams.set("v", MODEL_VERSION);
+          metadataUrl.searchParams.set("v", MODEL_VERSION);
+          model = await tmImage.load(modelUrl.href, metadataUrl.href);
           const labels = model.getClassLabels();
           help.hidden = true;
           setFileInputEnabled(true);
