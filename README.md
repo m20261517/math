@@ -35,7 +35,7 @@ Teachable Machine을 활용하여 입체도형 사진이나 웹캠 영상을 분
 
 Teachable Machine 이미지 분류 모델을 사용합니다.
 
-- 모델 URL: https://teachablemachine.withgoogle.com/models/FqPNxW2We/
+- 모델 URL: https://teachablemachine.withgoogle.com/models/z8xEBhNXJ/
 
 ### 개인정보 및 데이터 처리
 
