@@ -90,6 +90,8 @@
   <script>
     // Teachable Machine에서 공개한 모델 파일을 불러옵니다.
     const MODEL_URL = "https://teachablemachine.withgoogle.com/models/z8xEBhNXJ/";
+    // 새 티처블 머신 모델을 배포할 때 브라우저 캐시에 남은 이전 파일을 피함
+    const MODEL_VERSION = "20261030";
     const CONFIDENCE_THRESHOLD = 0.7;
     const fileInput = document.getElementById("file-input");
     const downloadButton = document.getElementById("download-button");
@@ -142,7 +144,11 @@
 
     async function loadModel() {
       try {
-        model = await tmImage.load(`${MODEL_URL}model.json`, `${MODEL_URL}metadata.json`);
+        const modelUrl = new URL("model.json", MODEL_URL);
+        const metadataUrl = new URL("metadata.json", MODEL_URL);
+        modelUrl.searchParams.set("v", MODEL_VERSION);
+        metadataUrl.searchParams.set("v", MODEL_VERSION);
+        model = await tmImage.load(modelUrl.href, metadataUrl.href);
         setStatus(`모델 준비 완료. 클래스 ${model.getClassLabels().length}개를 사용합니다. 사진을 선택해 주세요.`);
       } catch (error) {
         console.error(error);

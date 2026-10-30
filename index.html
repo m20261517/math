@@ -193,6 +193,8 @@
     // 티처블 머신에서 "모델 내보내기 → 업로드"로 받은 공유 주소
     // (이 주소 뒤에 model.json, metadata.json을 붙여 모델을 불러옴)
     const MODEL_URL = "https://teachablemachine.withgoogle.com/models/z8xEBhNXJ/";
+    // 새 티처블 머신 모델을 배포할 때 브라우저 캐시에 남은 이전 파일을 피함
+    const MODEL_VERSION = "20261030";
 
     // 판정 기준 확률(70%). 가장 높은 확률이 이보다 낮으면
     // 도형 이름 대신 "잘 모르겠어요"를 보여 줌 → 애매한 사진에 억지로 답하지 않게 함
@@ -347,7 +349,11 @@
       try {
         setStatus("AI 모델을 불러오는 중입니다...");
         // model.json(신경망 구조·가중치 정보)과 metadata.json(클래스 이름 등)을 불러옴
-        model = await tmImage.load(`${MODEL_URL}model.json`, `${MODEL_URL}metadata.json`);
+        const modelUrl = new URL("model.json", MODEL_URL);
+        const metadataUrl = new URL("metadata.json", MODEL_URL);
+        modelUrl.searchParams.set("v", MODEL_VERSION);
+        metadataUrl.searchParams.set("v", MODEL_VERSION);
+        model = await tmImage.load(modelUrl.href, metadataUrl.href);
         // 모델에 들어 있는 클래스 이름 순서대로 확률 카드를 만듦
         createProbabilityCards(model.getClassLabels());
         startButton.disabled = false;
