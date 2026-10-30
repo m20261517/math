@@ -303,10 +303,19 @@
       saveButton.disabled = true;
     }
 
-    // 사진(이미지·캔버스)의 둘레에 여백을 붙여 정사각형 캔버스로 만듦
-    // 이유: 티처블 머신 모델은 사진의 가운데 정사각형만 잘라서 보기 때문에,
-    //       가로로 긴 사진이면 양옆이, 세로로 긴 사진이면 위아래가 잘린 채 판정됨.
-    //       미리 정사각형으로 만들어 두면 잘리는 부분 없이 사진 전체가 판정에 쓰임
+        // 티처블 머신과 똑같이, 진짜 사진 크기를 기준으로 가운데를 정사각형으로 잘라 224×224로 만듦
+    // (화면에 보이는 미리보기 크기 때문에 사진이 찌그러지는 문제를 막음)
+    function makeCenterSquare(source) {
+      const width = source.naturalWidth || source.width;
+      const height = source.naturalHeight || source.height;
+      const side = Math.min(width, height);
+      const canvas = document.createElement("canvas");
+      canvas.width = 224;
+      canvas.height = 224;
+      const ctx = canvas.getContext("2d");
+      ctx.drawImage(source, (width - side) / 2, (height - side) / 2, side, side, 0, 0, 224, 224);
+      return canvas;
+    }
     function makeSquareWithPadding(source) {
       // <img>는 naturalWidth/Height, <canvas>는 width/height가 실제 크기
       const width = source.naturalWidth || source.width;
@@ -570,7 +579,7 @@
       if (!model) return null;
       try {
         // 사진 전체가 판정에 쓰이도록 여백을 붙여 정사각형으로 만든 뒤 모델에 넣음
-        const input = source;
+        const input = makeCenterSquare(source);
         // 모델이 각 도형일 확률을 계산해 [{className, probability}, …] 형태로 돌려줌
         const predictions = await model.predict(input);
         // 원본 순서는 유지하기 위해 복사본을 만들어 확률이 높은 순으로 정렬
