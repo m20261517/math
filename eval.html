@@ -4,9 +4,8 @@
   교사용 평가 화면 — 원기둥·원뿔·구 분류 모델의 정확도 확인
   - 평가용 사진 여러 장을 한 번에 골라 티처블 머신 모델로 분류하고,
     혼동행렬·클래스별 정분류율·틀린 사진 모음을 보여 줍니다.
-  - 모델은 두 곳에서 차례로 찾습니다.
-    ① 티처블 머신 클라우드 주소(MODEL_SOURCES의 첫 번째) — 파일을 따로 올리지 않아도 됨
-    ② ①이 안 되면, 이 eval.html과 같은 폴더의 model.json, metadata.json, weights.bin
+  - 모델은 티처블 머신 클라우드 주소에서 불러옵니다.
+    별도의 model.json, metadata.json, weights.bin 파일을 저장소에 올릴 필요가 없습니다.
   - 사진은 서버로 보내지 않고 브라우저 안에서만 분석합니다.
   ==========================================================================
 -->
@@ -152,15 +151,10 @@
     // 1. 설정값
     // =====================================================================
 
-    // 모델을 찾을 곳 목록. 위에서부터 차례로 시도해서, 먼저 성공한 곳의 모델을 씀
-    // ① 티처블 머신에서 "모델 내보내기 → 업로드"로 받은 공유 주소(클라우드)
-    //    → GitHub에 모델 파일을 따로 올리지 않아도 됨
-    // ② 이 eval.html이 있는 폴더(model.json, metadata.json, weights.bin을 함께 올린 경우)
-    //    → 클라우드 주소가 안 될 때를 위한 예비
-    // ※ 모델을 다시 학습해서 새 주소를 받으면 ①의 주소만 바꾸면 됨(끝의 / 꼭 포함)
+    // 티처블 머신에서 "모델 내보내기 → 업로드"로 받은 공유 주소
+    // ※ 모델을 다시 학습해서 새 주소를 받으면 이 주소만 바꾸면 됨(끝의 / 꼭 포함)
     const MODEL_SOURCES = [
       { name: "티처블 머신 클라우드", base: "https://teachablemachine.withgoogle.com/models/z8xEBhNXJ/" },
-      { name: "이 페이지와 같은 폴더", base: new URL("./", window.location.href).href, local: true },
     ];
 
     // 판정 기준 확률(70%). 가장 높은 확률이 이보다 낮으면 "잘 모르겠어요"로 처리
@@ -272,7 +266,7 @@
     }
 
     // =====================================================================
-    // 4. 모델 불러오기 — 클라우드 → 같은 폴더 순서로 시도, 실패하면 원인을 알려 줌
+    // 4. 모델 불러오기 — 클라우드에서 확인한 뒤 불러옴
     // =====================================================================
 
     // 한 곳(base 주소)에 모델 파일 3개가 제대로 있는지 확인함
@@ -300,7 +294,7 @@
       }
     }
 
-    // 모든 곳에서 실패했을 때 화면에 원인과 해결 방법을 보여 줌
+    // 모델 불러오기에 실패했을 때 화면에 원인과 해결 방법을 보여 줌
     function showHelp(failures) {
       help.hidden = false;
       help.innerHTML = `
@@ -309,7 +303,6 @@
         <b>해결 방법</b>
         <ul>
           <li>티처블 머신 주소가 맞는지, 모델 내보내기에서 <b>업로드</b>까지 눌렀는지 확인해 주세요.</li>
-          <li>또는 eval.html 바로 옆(같은 폴더)에 <code>model.json</code>, <code>metadata.json</code>, <code>weights.bin</code> 3개 파일을 이름 그대로 올려 주세요. <code>my_model</code> 같은 하위 폴더에 넣으면 안 됩니다.</li>
           <li>GitHub에 막 올렸다면 반영되는 데 1~2분 걸릴 수 있습니다. 잠시 뒤 새로고침해 주세요.</li>
         </ul>`;
     }
@@ -324,16 +317,11 @@
       }
       const failures = []; // 실패한 곳과 원인을 모아 두었다가 모두 실패하면 보여 줌
       for (const source of MODEL_SOURCES) {
-        // 파일을 더블클릭해서 연 경우(file://)에는 같은 폴더의 파일을 브라우저 보안 때문에 읽을 수 없음
-        if (source.local && window.location.protocol === "file:") {
-          failures.push({ ...source, reason: "파일을 더블클릭해서 연 상태에서는 같은 폴더의 모델 파일을 읽을 수 없습니다. GitHub Pages 주소(https://…)로 열어 주세요." });
-          continue;
-        }
         try {
           setStatus(`${source.name}에서 모델 파일을 확인하는 중입니다...`);
           await checkModelFiles(source.base);
           setStatus(`${source.name}에서 AI 모델을 불러오는 중입니다...`);
-          // model.json과 metadata.json으로 모델을 만듦(weights.bin은 자동으로 함께 불러옴)
+          // model.json과 metadata.json으로 모델을 만듦(가중치는 모델 주소에서 자동으로 불러옴)
           model = await tmImage.load(`${source.base}model.json`, `${source.base}metadata.json`);
           const labels = model.getClassLabels();
           help.hidden = true;
