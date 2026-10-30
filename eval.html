@@ -390,7 +390,7 @@
         const actual = getActualClass(file.name);
         try {
           const image = await loadImage(file);
-          // 학생용 앱과 같은 방식(여백 붙이기)으로 판정할지 선택
+          // 학생용 앱과 같은 방식(가운데 정사각형 잘라 보기)으로 판정
           const input = USE_PADDING ? makeSquareWithPadding(image) : makeCenterSquare(image);
           const predictions = await model.predict(input);
           // 확률이 가장 높은 도형
