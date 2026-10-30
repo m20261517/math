@@ -568,7 +568,7 @@
       if (!model) return null;
       try {
         // 사진 전체가 판정에 쓰이도록 여백을 붙여 정사각형으로 만든 뒤 모델에 넣음
-        const input = makeSquareWithPadding(source);
+        const input = source;
         // 모델이 각 도형일 확률을 계산해 [{className, probability}, …] 형태로 돌려줌
         const predictions = await model.predict(input);
         // 원본 순서는 유지하기 위해 복사본을 만들어 확률이 높은 순으로 정렬
