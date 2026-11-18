@@ -56,6 +56,13 @@
     .danger { background:#fff0f2; color:var(--danger); }
     /* 실제 파일 선택 input은 숨기고, 라벨을 눌러 열도록 함 */
     #file-input { position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0,0,0,0); }
+    #share-button { background:linear-gradient(135deg,#475569,#334155); }
+    .share-modal { position:fixed; inset:0; z-index:1000; display:grid; place-items:center; padding:20px; background:rgba(15,23,42,.55); }
+    .share-modal[hidden] { display:none; }
+    .share-dialog { width:min(360px,100%); border-radius:22px; background:#fff; padding:22px; text-align:center; box-shadow:0 24px 70px rgba(15,23,42,.35); }
+    .share-dialog h2 { margin:0 0 6px; }
+    .share-dialog p { margin:0 0 14px; color:var(--muted); line-height:1.5; word-break:break-all; }
+    #share-qr { display:block; width:240px; height:240px; max-width:100%; margin:0 auto 16px; border:1px solid var(--border); border-radius:14px; }
 
     /* ---------- 상태 메시지 ---------- */
     .status { min-height:24px; margin:14px 0 0; color:var(--muted); line-height:1.5; }
@@ -114,6 +121,7 @@
         <input id="file-input" type="file" accept="image/*" multiple disabled />
         <button id="download-button" type="button" class="secondary" disabled>CSV 다운로드</button>
         <button id="clear-button" type="button" class="danger" disabled>결과 지우기</button>
+        <button id="share-button" type="button">QR코드로 공유하기</button>
       </div>
       <!-- 진행 상황·오류 메시지 -->
       <p id="status" class="status" aria-live="polite">AI 모델을 준비하고 있습니다.</p>
@@ -121,7 +129,7 @@
       <div id="help" class="help" hidden></div>
       <div class="summary" aria-live="polite">
         <div class="stat">전체 사진<strong id="total-count">0</strong></div>
-        <div class="stat">정분류<strong id="correct-count">0</strong></div>
+        <div class="stat">O 정분류<strong id="correct-count">0</strong></div>
         <div class="stat">전체 정분류율<strong id="overall-accuracy">-</strong></div>
       </div>
     </section>
@@ -140,9 +148,21 @@
 
     <!-- ===== 틀린 사진 모음 ===== -->
     <section class="card">
-      <h2>틀린 사진 모음</h2>
-      <div id="wrong-grid" class="wrong-grid"><p class="empty">현재 틀린 사진이 없습니다.</p></div>
+      <h2>X 오분류 사진 모음</h2>
+      <div id="wrong-grid" class="wrong-grid"><p class="empty">현재 오분류 사진이 없습니다.</p></div>
     </section>
+
+    <div class="share-modal" id="share-modal" hidden role="dialog" aria-modal="true" aria-labelledby="share-title">
+      <div class="share-dialog">
+        <h2 id="share-title">이 웹앱 공유하기</h2>
+        <p id="share-url"></p>
+        <img id="share-qr" alt="웹앱 주소 QR코드" />
+        <div style="display:flex;justify-content:center;gap:8px;">
+          <button id="copy-link-button" type="button" class="secondary">링크 복사</button>
+          <button id="close-share-button" type="button">닫기</button>
+        </div>
+      </div>
+    </div>
 
     <footer>모델 파일을 내려받는 것을 제외하고, 사진 분석은 이 브라우저 안에서만 처리됩니다.</footer>
   </main>
@@ -185,6 +205,12 @@
     const fileLabel = document.getElementById("file-label");
     const downloadButton = document.getElementById("download-button");
     const clearButton = document.getElementById("clear-button");
+    const shareButton = document.getElementById("share-button");
+    const shareModal = document.getElementById("share-modal");
+    const shareUrl = document.getElementById("share-url");
+    const shareQr = document.getElementById("share-qr");
+    const copyLinkButton = document.getElementById("copy-link-button");
+    const closeShareButton = document.getElementById("close-share-button");
     const status = document.getElementById("status");
     const help = document.getElementById("help");
     const results = []; // 사진 한 장마다 { 파일 이름, 실제, 예측, 확률, 맞았는지, 미리보기 } 를 담음
@@ -475,15 +501,15 @@
         <article class="wrong-item">
           ${r.imageData ? `<img src="${r.imageData}" alt="틀린 사진 ${escapeHtml(r.fileName)}">` : ""}
           <p><b>${escapeHtml(r.fileName)}</b><br>실제: ${escapeHtml(r.actual)}<br>예측: ${escapeHtml(r.predicted)} (${(r.probability * 100).toFixed(1)}%)</p>
-        </article>`).join("") : `<p class="empty">틀린 사진이 없습니다.</p>`;
+        </article>`).join("") : `<p class="empty">오분류 사진이 없습니다.</p>`;
     }
 
     // =====================================================================
     // 7. CSV 다운로드 — 엑셀에서 열어도 한글이 깨지지 않게 BOM을 붙임
     // =====================================================================
     function downloadCsv() {
-      const header = ["파일 이름", "실제 클래스", "예측 클래스", "최고 확률", "정분류 여부"];
-      const rows = results.map((r) => [r.fileName, r.actual, r.predicted, `${(r.probability * 100).toFixed(1)}%`, r.correct ? "정분류" : "오분류"]);
+      const header = ["파일 이름", "실제 클래스", "예측 클래스", "최고 확률", "판정 O/X"];
+      const rows = results.map((r) => [r.fileName, r.actual, r.predicted, `${(r.probability * 100).toFixed(1)}%`, r.correct ? "O" : "X"]);
       // 쉼표·따옴표가 들어간 값도 깨지지 않도록 모든 값을 큰따옴표로 감쌈
       const csv = [header, ...rows].map((row) => row.map((value) => `"${String(value).replace(/"/g, '""')}"`).join(",")).join("\r\n");
       const blob = new Blob(["\ufeff" + csv], { type: "text/csv;charset=utf-8" });
@@ -520,6 +546,26 @@
     });
     downloadButton.addEventListener("click", downloadCsv);
     clearButton.addEventListener("click", clearResults);
+    shareButton.addEventListener("click", () => {
+      const url = window.location.href;
+      shareUrl.textContent = url;
+      shareQr.src = `https://api.qrserver.com/v1/create-qr-code/?size=240x240&data=${encodeURIComponent(url)}`;
+      shareModal.hidden = false;
+      closeShareButton.focus();
+    });
+    copyLinkButton.addEventListener("click", async () => {
+      try {
+        await navigator.clipboard.writeText(window.location.href);
+        setStatus("웹앱 링크를 복사했습니다.");
+      } catch (_error) {
+        setStatus("링크 복사 권한이 없으면 주소를 직접 선택해 복사해 주세요.");
+      }
+    });
+    closeShareButton.addEventListener("click", () => { shareModal.hidden = true; shareButton.focus(); });
+    shareModal.addEventListener("click", (event) => { if (event.target === shareModal) { shareModal.hidden = true; shareButton.focus(); } });
+    document.addEventListener("keydown", (event) => {
+      if (event.key === "Escape" && !shareModal.hidden) { shareModal.hidden = true; shareButton.focus(); }
+    });
 
     // 처음에는 빈 혼동행렬을 그려 두고, 모델 불러오기 시작
     loadModel().then(renderResults);
