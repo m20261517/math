@@ -4,7 +4,7 @@
   초등학교 6학년 수학 6단원 「원기둥, 원뿔, 구」 수업용 웹 앱
   - 티처블 머신(Teachable Machine)으로 학습한 이미지 분류 모델을 불러와
     카메라로 찍은 사진 또는 업로드한 사진이 원기둥/원뿔/구 중 무엇인지 판정합니다.
-  - 모델 파일(model.json, metadata.json, 가중치)만 인터넷에서 내려받고,
+  - 저장소에 포함된 모델 파일(model.json, metadata.json, weights.bin)을 사용하고,
     실제 이미지 분석은 학생의 브라우저 안에서만 이루어집니다.
   - 카메라 화면을 보다가 "사진 찍기"를 누르면 그 순간의 한 장을 찍어
     화면에 고정하고 바로 판정합니다. "사진 다시 찍기"를 누르면 다시 카메라 화면으로 돌아갑니다.
@@ -236,9 +236,9 @@
     // 1. 설정값
     // =====================================================================
 
-    // 티처블 머신에서 "모델 내보내기 → 업로드"로 받은 공유 주소
-    // (이 주소 뒤에 model.json, metadata.json을 붙여 모델을 불러옴)
-    const MODEL_URL = "https://teachablemachine.withgoogle.com/models/z8xEBhNXJ/";
+    // 이 페이지와 같은 폴더에 올린 모델 파일을 불러옴
+    // (model.json, metadata.json, weights.bin)
+    const MODEL_URL = "./";
     
     // 판정 기준 확률(70%). 가장 높은 확률이 이보다 낮으면
     // 도형 이름 대신 "잘 모르겠어요"를 보여 줌 → 애매한 사진에 억지로 답하지 않게 함
@@ -443,7 +443,7 @@
     // 5. 모델 불러오기
     // =====================================================================
 
-    // 페이지가 열리면 바로 실행됨. 인터넷에서 모델 파일을 내려받아 준비함
+    // 페이지가 열리면 바로 실행됨. 같은 폴더의 모델 파일을 준비함
     async function loadModel() {
       try {
         setStatus("AI 모델을 불러오는 중입니다...");
@@ -457,9 +457,9 @@
         // 모델을 학습한 시각을 함께 보여 줌 → 교사용 평가 화면과 같은 모델인지 확인할 수 있음
         setStatus(`준비되었습니다. 카메라를 시작하거나 사진을 올려 주세요. (모델 학습 시각: ${modelTimeText(model)})`);
       } catch (error) {
-        // 인터넷이 끊겼거나 모델 주소가 잘못된 경우: 오류를 알리고 모든 기능을 막음
+        // 모델 파일을 찾지 못했거나 형식이 잘못된 경우: 오류를 알리고 모든 기능을 막음
         console.error(error);
-        setStatus("모델을 불러오지 못했습니다. 인터넷 연결을 확인해 주세요.", true);
+        setStatus("로컬 모델 파일을 불러오지 못했습니다. model.json, metadata.json, weights.bin 파일을 확인해 주세요.", true);
         startButton.disabled = true;
         captureButton.disabled = true;
         retakeButton.disabled = true;

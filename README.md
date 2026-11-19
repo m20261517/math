@@ -35,13 +35,13 @@ Teachable Machine을 활용하여 입체도형 사진이나 웹캠 영상을 분
 
 Teachable Machine 이미지 분류 모델을 사용합니다.
 
-- 모델 URL: https://teachablemachine.withgoogle.com/models/z8xEBhNXJ/
+- 모델 파일: 저장소의 `model.json`, `metadata.json`, `weights.bin`
 
 ### 개인정보 및 데이터 처리
 
-- 선택한 사진과 카메라 영상은 TensorFlow.js와 Teachable Machine 모델을 이용해 **사용자의 브라우저에서만** 분석됩니다.
+- 선택한 사진과 카메라 영상은 TensorFlow.js와 저장소에 포함된 Teachable Machine 모델을 이용해 **사용자의 브라우저에서만** 분석됩니다.
 - 사진 파일이나 카메라 영상 데이터를 별도의 서버, 업로드 API, 저장소로 보내지 않습니다.
-- 모델 파일과 JavaScript 라이브러리를 불러오기 위해 인터넷 연결이 필요합니다.
+- JavaScript 라이브러리를 불러오기 위해 인터넷 연결이 필요합니다. 모델은 저장소의 로컬 파일을 사용합니다.
 - 카메라 기능은 브라우저 보안 정책에 따라 HTTPS 또는 `localhost`에서 사용해야 합니다.
 
 ### 수업 활용
