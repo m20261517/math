@@ -173,9 +173,9 @@
     // 이 페이지와 같은 폴더에 올린 모델 파일을 사용함
     const MODEL_BASE = new URL("./", window.location.href).href;
 
-    // 판정 기준 확률(70%). 가장 높은 확률이 이보다 낮으면 "잘 모르겠어요"로 처리
+    // 판정 기준 확률(65%). 가장 높은 확률이 이보다 낮으면 "잘 모르겠어요"로 처리
     // → 학생용 앱과 같은 기준을 써야 평가 결과가 실제 수업 상황과 같아짐
-    const CONFIDENCE_THRESHOLD = 0.7;
+    const CONFIDENCE_THRESHOLD = 0.65;
 
     // 사진 둘레에 흰 여백을 붙여 정사각형으로 만든 뒤 판정할지 여부
     // false(지금) = 티처블 머신·학생용 앱과 같은 방식(가운데 정사각형 잘라 보기) ← 이대로 두세요
@@ -397,7 +397,7 @@
           // 확률이 가장 높은 도형
           const best = [...predictions].sort((a, b) => b.probability - a.probability)[0];
           const probability = best ? best.probability : 0;
-          // 기준(70%) 미만이면 "잘 모르겠어요"로 처리 — 학생용 앱 화면에 보이는 결과와 같게
+          // 기준(65%) 미만이면 "잘 모르겠어요"로 처리 — 학생용 앱 화면에 보이는 결과와 같게
           const predicted = !best ? FAILED : (probability >= CONFIDENCE_THRESHOLD ? best.className : UNSURE);
           // 실제 정답과 예측이 같아야 정분류("잘 모르겠어요"는 오분류로 셈)
           const correct = normalizeLabel(actual) === normalizeLabel(predicted);
